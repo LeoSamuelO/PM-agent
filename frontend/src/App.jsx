@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 
-const API = "https://pm-agent-avpl.onrender.com";
+const API = "http://localhost:3001";
 
 const G = {
   deepBlue: "#0C2340", digitalBlue: "#1B6CA8", codeBlue: "#5BA4CF",
@@ -207,6 +207,7 @@ Kun olet kertonut riittävästi, alan ehdottamaan diasissältöjä yhdessä kans
 
   // ── Planning ──────────────────────────────────────────────────────
   async function proposeSlide(idx, hist) {
+    setSlideIdx(idx);
     const slide = SLIDES[idx];
     setStatuses(prev => {
       const n = { ...prev };
@@ -223,10 +224,11 @@ Kun olet kertonut riittävästi, alan ehdottamaan diasissältöjä yhdessä kans
     setStatuses(prev => ({ ...prev, [slide.id]: "confirming" }));
   }
 
-  async function runPlanning(userText, ctx) {
-    const slide = SLIDES[slideIdx];
+  async function runPlanning(userText, ctx, currentIdx) {
+    const idx = currentIdx !== undefined ? currentIdx : slideIdx;
+    const slide = SLIDES[idx];
     const hist = [...history(), { role: "user", content: userText }];
-    const prompt = "[DIA " + (slideIdx+1) + "/" + SLIDES.length + " - " + slide.label + " - VAHVISTA]\n\n" + CONFIRM[slide.id] + "\n\nKayttajan vastaus: \"" + userText + "\"";
+    const prompt = "[DIA " + (idx+1) + "/" + SLIDES.length + " - " + slide.label + " - VAHVISTA]\n\n" + CONFIRM[slide.id] + "\n\nKayttajan vastaus: \"" + userText + "\"";
     const r = await callAPI([...hist, { role: "user", content: prompt }], ctx || docContext);
     const extracted = extractData(r);
     if (Object.keys(extracted).length) setCollected(prev => ({ ...prev, ...extracted }));
@@ -236,10 +238,12 @@ Kun olet kertonut riittävästi, alan ehdottamaan diasissältöjä yhdessä kans
       setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
       setScreen("ready");
     } else if (c.includes("sovittu") && !c.includes("?")) {
-      // Only advance if confirmed AND no question at end (AI isn't asking for more info)
       setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
-      const next = slideIdx + 1;
-      if (next < SLIDES.length) setTimeout(() => proposeSlide(next), 600);
+      const next = idx + 1;
+      if (next < SLIDES.length) {
+        setSlideIdx(next);
+        setTimeout(() => proposeSlide(next), 600);
+      }
     }
   }
 
