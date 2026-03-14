@@ -76,7 +76,7 @@ function getConfirm(slide, isLast) {
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
   };
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
-  return `Käsittele palaute "${slide.label}" -diaan. Kun hyväksytty, sano "${slide.label} sovittu." ja tallenna:\n[SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]${isLast ? "\nTämä on viimeinen dia — lisää myös ##ALL_SLIDES_DONE##" : ""}`;
+  return `Käsittele palaute "${slide.label}" -diaan. Kun hyväksytty, sano "${slide.label} sovittu." ja tallenna:\n[SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]${isLast ? "\nTÄMÄ ON VIIMEINEN DIA. Kun hyväksytty, LISÄÄ PAKOLLISESTI ##ALL_SLIDES_DONE## omalle rivilleen. Älä kysy mitään muuta." : ""}`;
 }
 
 function Divider({ text }) {
@@ -289,8 +289,10 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
+    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
     const confirmed = r.includes("##ALL_SLIDES_DONE##") ||
-      (c.toLowerCase().includes("sovittu") && !c.endsWith("?") && !c.split("\n").pop().includes("?"));
+      (c.toLowerCase().includes("sovittu") && !lastLine.includes("?")) ||
+      (isLast && c.toLowerCase().includes("valmis") && !lastLine.includes("?"));
 
     if (confirmed) {
       setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
