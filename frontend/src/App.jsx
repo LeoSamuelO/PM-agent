@@ -294,9 +294,13 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
+      slidesRef.current = confirmedStructure;   // ← sync heti, ei odoteta useEffect:iä
       setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
       setMsgs(prev => [...prev, { type: "divider", content: "✅ Vaihe 3 — Diojen sisällöntuotanto" }]);
       setScreen("planning");
+      screenRef.current = "planning";           // ← sync heti
+      setSlideIdx(0);
+      slideIdxRef.current = 0;                  // ← sync heti
       await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
     } else if (structure) {
       window.__pendingStructure = structure;
@@ -352,6 +356,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
       const next = idx + 1;
       if (!allDone && next < cur.length) {
         setSlideIdx(next);
+        slideIdxRef.current = next;  // ← sync heti
         setTimeout(() => proposeSlide(next, null, cur), 600);
       } else {
         setScreen("ready");
