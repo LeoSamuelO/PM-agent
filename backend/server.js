@@ -67,21 +67,33 @@ app.post("/api/extract-file", async (req, res) => {
 
 // ── Chat-endpoint ─────────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
-  const { messages, system } = req.body;
+  const { messages, system, useSearch } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "messages puuttuu" });
   }
 
   try {
-    const response = await client.messages.create({
+    const params = {
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1500,
+      max_tokens: 4000,
       system: system || "Olet kokenut projektikonsultti. Kommunikoi aina suomeksi. Ole ytimekäs ja käytännönläheinen.",
       messages,
-    });
+    };
 
-    const text = response.content.find((b) => b.type === "text")?.text || "";
+    // Lisää web search jos pyydetty tai viesti vaikuttaa hakevan tietoa netistä
+    if (useSearch) {
+      params.tools = [{ type: "web_search_20250305", name: "web_search" }];
+    }
+
+    const response = await client.messages.create(params);
+
+    // Kerää kaikki tekstiblokit yhteen (web search voi tuottaa useita)
+    const text = response.content
+      .filter(b => b.type === "text")
+      .map(b => b.text)
+      .join("\n");
+
     res.json({ text });
   } catch (err) {
     console.error("Claude API virhe:", err.message);

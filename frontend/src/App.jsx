@@ -20,11 +20,16 @@ KRIITTISET SÄÄNNÖT:
 6. TÄRKEÄÄ: Olet osa sovellusta joka AUTOMAATTISESTI generoi PowerPoint-tiedoston backendissä. ÄLÄ KOSKAAN sano että et pysty luomaan PowerPointtia tai PPTX-tiedostoja — sovellus hoitaa sen puolestasi. Roolisi on kerätä sisältö dioihin, ei itse tehdä tiedostoa.
 7. KRIITTINEN DIA-SÄÄNTÖ: Kun käsittelet dioja, käsittele AINA VAIN YKSI DIA KERRALLAAN. ÄLÄ KOSKAAN generoi useiden diojen sisältöä samassa vastauksessa. Odota käyttäjän hyväksyntä ennen kuin siirryt seuraavaan diaan.`;
 
-async function callAPI(messages, extraSystem) {
+const SEARCH_TRIGGERS = ["hae", "etsi", "googla", "selvitä", "tarkista netistä", "hae tietoa", "hae netistä", "search", "find info"];
+
+async function callAPI(messages, extraSystem, forceSearch) {
   const system = extraSystem ? SYSTEM + "\n\n" + extraSystem : SYSTEM;
+  // Tunnista automaattisesti jos viesti pyytää hakemaan tietoa
+  const lastUserMsg = [...messages].reverse().find(m => m.role === "user")?.content || "";
+  const useSearch = forceSearch || SEARCH_TRIGGERS.some(t => lastUserMsg.toLowerCase().includes(t));
   const r = await fetch(API + "/api/chat", {
     method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
-    body: JSON.stringify({ messages, system }),
+    body: JSON.stringify({ messages, system, useSearch }),
   });
   const d = await r.json();
   if (d.error) throw new Error(d.error);
