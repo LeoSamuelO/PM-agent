@@ -8,7 +8,8 @@ const G = {
   grey: "#8C9BAA", silver: "#D3D9DF", light: "#EEF1F3", bg: "#F4F6F9",
 };
 
-const TODAY = new Date().toLocaleDateString("fi-FI", { year:"numeric", month:"long", day:"numeric" });
+const _d = new Date();
+const TODAY = _d.toLocaleDateString("fi-FI", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
 const SYSTEM = `Olet kokenut projektikonsultti Goforella. Kommunikoi AINA suomeksi.
 TÄNÄÄN ON: ${TODAY} — käytä tätä kun ehdotat päivämääriä tai arvioit aikatauluja.
 KRIITTISET SÄÄNNÖT:
@@ -96,15 +97,13 @@ function getConfirm(slide, isLast) {
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
   return `Käsittele käyttäjän palaute "${slide.label}" -diaan.
 
-TÄRKEÄÄ: Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, tämä sopii, sovittu, tms.):
-- Tallenna HETI: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
-- Kirjoita sitten lyhyesti mitä tallensit (1-2 lausetta)
-- Lisää VIIMEISELLE RIVILLE pakollisesti täsmälleen näin: ##SLIDE_DONE##
-${isLast ? "- Tämä on VIIMEINEN DIA. Lisää myös täsmälleen: ##ALL_SLIDES_DONE##\n- ÄLÄ kysy mitään enää. Kirjoita vain 'Esitys on valmis ja tallentuu nyt.'" : ""}
+Jos käyttäjä hyväksyy tai haluaa pieniä muutoksia jotka voit tehdä:
+1. Tallenna dian data: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
+2. Kerro lyhyesti mitä tallensit
+3. Lisää pakollisesti: ##SLIDE_DONE##
+${isLast ? "4. Koska tämä on VIIMEINEN DIA, lisää myös: ##ALL_SLIDES_DONE##\nÄlä kysy enää mitään — esitys on valmis." : ""}
 
-MUISTA: ##SLIDE_DONE## TÄYTYY olla vastauksessasi jos käyttäjä hyväksyi. Älä koskaan jätä sitä pois.
-
-Jos käyttäjä haluaa muutoksia: tee muutokset, näytä päivitetty sisältö, ja kysy vahvistus uudelleen.`;
+Jos käyttäjä haluaa isoja muutoksia, tee ne ensin ja kysy uusi vahvistus. ÄLÄ lisää ##SLIDE_DONE## ennen vahvistusta.`;
 }
 
 function Divider({ text }) {
@@ -272,9 +271,18 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
-[STRUCTURE_DATA][...][/STRUCTURE_DATA]
-Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
+
+KRIITTINEN SÄÄNTÖ: Tässä vaiheessa VAIN vahvistetaan rakenne (lista dioista). ÄLÄ rakenna diojen sisältöä. ÄLÄ sano "esitys on valmis". ÄLÄ generoi powerpointtia.
+
+Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, tehdään tämä tms.):
+- Vahvista lyhyesti lista dioista
+- Lisää: ##STRUCTURE_CONFIRMED##
+- Palauta TÄSMÄLLEEN tämä muoto: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
+
+Jos käyttäjä haluaa muuttaa rakennetta (lisätä/poistaa/muuttaa dioja): tee muutos ja pyydä vahvistus.
+Jos käyttäjä pyytää yksinkertaistamaan: muuta rakenne yksinkertaisemmaksi (vähemmän dioja) ja pyydä vahvistus.
+
+EI KOSKAAN: ÄLÄ rakenna diojen sisältöä tässä vaiheessa. Se tapahtuu vasta seuraavassa vaiheessa.` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
@@ -349,12 +357,8 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Tunnistus: tagi on ensisijainen, mutta fallback jos AI unohtaa sen
-    const hasSlideData = Object.keys(extracted).length > 0;
-    const positiveReply = ["valmis", "tallennettu", "sovittu", "hyväksytty", "esitys on", "powerpoint"]
-      .some(kw => c.toLowerCase().includes(kw));
-    const slideDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##")
-      || (hasSlideData && positiveReply); // ← fallback: data tallennettu + positiivinen vastaus
+    // Luotettava tunnistus: pelkät tagit, ei NLP-parsintaa
+    const slideDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##");
     const allDone   = r.includes("##ALL_SLIDES_DONE##") || (slideDone && isLast);
 
     if (slideDone) {
@@ -544,8 +548,10 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
             <div style={{ color: G.codeBlue, fontSize: 11 }}>
               {screen === "interview"  ? "💬 Haastattelu" :
                screen === "structure"  ? "🔍 Analyysi & rakenne" :
-               screen === "planning" && currentSlide ? (currentSlide.icon || "📄") + " " + currentSlide.label :
-               screen === "ready" ? "✅ Kaikki diat sovittu" : ""}
+               (screen === "planning" || screen === "ready") && currentSlide ? 
+                 (doneCount === slides.length && slides.length > 0 ? "✅ Kaikki " + slides.length + " diaa sovittu" :
+                  "📄 Dia " + (slideIdx + 1) + "/" + slides.length + " — " + (currentSlide.icon || "") + " " + currentSlide.label) :
+               screen === "ready" ? "✅ Valmis" : ""}
             </div>
           </div>
         </div>
@@ -607,14 +613,19 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
             <textarea value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
-              placeholder={screen === "interview" ? "Kerro projektistasi... (Enter lähettää · Shift+Enter = uusi rivi)" : screen === "structure" ? "Hyväksy rakenne tai ehdota muutoksia..." : "Kommentoi tai hyväksy ehdotus..."}
+              placeholder={
+                screen === "interview" ? "Kerro projektistasi... (Enter lähettää · Shift+Enter = uusi rivi)" :
+                screen === "structure" ? "Hyväksy rakenne tai ehdota muutoksia..." :
+                screen === "planning" && currentSlide ? "Kommentoi '" + currentSlide.label + "' -diaa tai hyväksy (ok/joo/hyvä)..." :
+                "Kommentoi tai hyväksy ehdotus..."
+              }
               style={{ flex: 1, background: G.light, outline: "none", resize: "vertical", border: "1.5px solid " + (input.length > 0 ? G.digitalBlue : G.silver), borderRadius: 11, padding: "10px 14px", fontSize: 14, fontFamily: "inherit", lineHeight: 1.6, color: G.deepBlue, minHeight: 80, maxHeight: 220 }} />
             <button onClick={doSend} disabled={!canSend}
               style={{ width: 38, height: 38, flexShrink: 0, alignSelf: "flex-end", background: canSend ? G.orange : G.silver, color: G.white, border: "none", borderRadius: "50%", fontSize: 18, cursor: canSend ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}>↑</button>
-            {(screen === "planning" || screen === "ready") && (
+            {slides.length > 0 && (
               <button onClick={() => downloadPPTX(slidesRef.current)} disabled={building}
-                title="Lataa PowerPoint"
-                style={{ width: 38, height: 38, flexShrink: 0, alignSelf: "flex-end", background: building ? G.grey : G.mint, color: G.white, border: "none", borderRadius: "50%", fontSize: 16, cursor: building ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                title={doneCount > 0 ? "Lataa PowerPoint (" + doneCount + "/" + slides.length + " diaa valmis)" : "Diat kesken..."}
+                style={{ width: 38, height: 38, flexShrink: 0, alignSelf: "flex-end", background: doneCount > 0 && !building ? G.mint : G.grey, color: G.white, border: "none", borderRadius: "50%", fontSize: 18, cursor: doneCount > 0 && !building ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {building ? "⏳" : "⬇"}
               </button>
             )}
