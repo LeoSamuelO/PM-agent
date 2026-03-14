@@ -185,12 +185,13 @@ export default function App() {
       { role: "user", content: "[META] Onko projektin perustiedot (tavoite + aikataulu + osapuolet) riittävällä tasolla? Jos ei, kysy yksi tärkein puuttuva tieto lyhyesti. Jos kyllä, vastaa lyhyesti ja lisää: ##READY_TO_PLAN##" }
     ], ctx || docContext);
 
-    if (r.includes("##READY_TO_PLAN##")) {
-      const c = strip(r);
-      setMsgs(prev => [...prev, { role: "assistant", content: c }]);
+    const c = strip(r);
+    setMsgs(prev => [...prev, { role: "assistant", content: c }]);
+    // Only transition if READY and no question mark at end (AI isn't still asking something)
+    const lastSentence = c.trim().split("\n").filter(l => l.trim()).pop() || "";
+    const stillAsking = lastSentence.includes("?");
+    if (r.includes("##READY_TO_PLAN##") && !stillAsking) {
       await runInsightsAndStructure([...hist, { role: "assistant", content: c }]);
-    } else {
-      setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
     }
     if (ctx && ctx !== docContext) setDocContext(ctx);
   }
@@ -200,19 +201,23 @@ export default function App() {
     setMsgs(prev => [...prev, { type: "divider", content: "Analyysi & esitysrakenne" }]);
     const r = await callAPI([
       ...(hist || history()),
-      { role: "user", content: `Tee kaksi asiaa:
+      { role: "user", content: `Tee kaksi asiaa SELKEÄSTI EROTELTUINA:
 
-## 1. PROJEKTIN OIVALLUKSET
-Listaa 3-5 tärkeintä havaintoa tästä projektista. Mitä PM:n täytyy erityisesti huomioida? Esim. kriittiset riskit, aikataulupaine, pullonkaulat, riippuvuudet. Ole konkreettinen.
+## OSA 1: PROJEKTIN OIVALLUKSET
+Listaa 3-5 tärkeintä havaintoa tästä projektista numerottuina (1. 2. 3. jne). Mitä PM:n täytyy erityisesti huomioida? Kriittiset riskit, aikataulupaine, pullonkaulat. Ole konkreettinen ja lyhyt.
 
-## 2. EHDOTETTU DIARAKENNE
-Ehdota tälle projektille räätälöity diaesitysrakenne. Mieti mikä on oleellista juuri tälle projektille.
-Layouts: title | bullets | table | gantt | cards | two-col
+## OSA 2: EHDOTETTU DIARAKENNE
+Näytä ehdotettu rakenne SELKEÄNÄ LISTANA tässä muodossa (yksi dia per rivi):
+1. 🎯 Kansi — projektin nimi ja perustiedot
+2. 📊 Yhteenveto — ...
+jne.
 
-Palauta rakenne TASAN tässä muodossa:
-[STRUCTURE_DATA][{"id":"cover","label":"Kansi","icon":"🎯","layout":"title","reason":"..."},{"id":"summary","label":"Yhteenveto","icon":"📊","layout":"bullets","reason":"..."}][/STRUCTURE_DATA]
+Perustele lyhyesti miksi juuri tämä rakenne sopii tälle projektille.
 
-Kysy lopuksi: "Hyväksytkö tämän rakenteen, vai haluatko muuttaa jotain?"` }
+Kysy sitten: "Hyväksytkö tämän rakenteen, vai haluatko lisätä/poistaa/muuttaa jotain diaa?"
+
+Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gantt|cards|two-col):
+[STRUCTURE_DATA][{"id":"cover","label":"Kansi","icon":"🎯","layout":"title","reason":"..."}][/STRUCTURE_DATA]` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
