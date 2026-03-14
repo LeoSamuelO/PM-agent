@@ -87,7 +87,15 @@ function getConfirm(slide, isLast) {
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
   };
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
-  return `Käsittele palaute "${slide.label}" -diaan. Kun hyväksytty, sano "${slide.label} sovittu." ja tallenna:\n[SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]${isLast ? "\nTÄMÄ ON VIIMEINEN DIA. Kun hyväksytty, LISÄÄ PAKOLLISESTI ##ALL_SLIDES_DONE## omalle rivilleen. Älä kysy mitään muuta." : ""}`;
+  return `Käsittele käyttäjän palaute "${slide.label}" -diaan.
+
+Jos käyttäjä hyväksyy tai haluaa pieniä muutoksia jotka voit tehdä:
+1. Tallenna dian data: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
+2. Kerro lyhyesti mitä tallensit
+3. Lisää pakollisesti: ##SLIDE_DONE##
+${isLast ? "4. Koska tämä on VIIMEINEN DIA, lisää myös: ##ALL_SLIDES_DONE##\nÄlä kysy enää mitään — esitys on valmis." : ""}
+
+Jos käyttäjä haluaa isoja muutoksia, tee ne ensin ja kysy uusi vahvistus. ÄLÄ lisää ##SLIDE_DONE## ennen vahvistusta.`;
 }
 
 function Divider({ text }) {
@@ -190,7 +198,10 @@ export default function App() {
 
   function startInterview() {
     setScreen("interview");
-    setMsgs([{ role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nKun olet kertonut riittävästi, analysoin tilanteen, nostan tärkeimmät havainnot esiin ja ehdotan esityksen rakennetta yhdessä kanssasi." }]);
+    setMsgs([
+      { type: "divider", content: "💬 Vaihe 1 — Haastattelu" },
+      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nKun olet kertonut riittävästi, analysoin tilanteen, nostan tärkeimmät havainnot esiin ja ehdotan esityksen rakennetta yhdessä kanssasi." }
+    ]);
   }
 
   async function runInterview(userText, ctx) {
@@ -213,7 +224,7 @@ export default function App() {
 
   async function runInsightsAndStructure(hist) {
     setScreen("structure");
-    setMsgs(prev => [...prev, { type: "divider", content: "Analyysi & esitysrakenne" }]);
+    setMsgs(prev => [...prev, { type: "divider", content: "🔍 Vaihe 2 — Analyysi & esitysrakenne" }]);
     const r = await callAPI([
       ...(hist || history()),
       { role: "user", content: `Tee kaksi asiaa SELKEÄSTI EROTELTUINA:
@@ -270,7 +281,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     if (isConfirmed) {
       setSlides(confirmedStructure);
       setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
-      setMsgs(prev => [...prev, { type: "divider", content: "Rakenne vahvistettu — aloitetaan diat" }]);
+      setMsgs(prev => [...prev, { type: "divider", content: "✅ Vaihe 3 — Diojen sisällöntuotanto" }]);
       setScreen("planning");
       await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
     } else if (structure) {
@@ -292,7 +303,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
       { role: "user", content: "[DIA " + (idx+1) + "/" + cur.length + " — " + slide.label + "]\n\n" + getPropose(slide) }
     ], docContext);
     setMsgs(prev => [...prev,
-      { type: "divider", content: "Dia " + (idx+1) + "/" + cur.length + " — " + (slide.icon || "📄") + " " + slide.label },
+      { type: "divider", content: "📄 Dia " + (idx+1) + "/" + cur.length + " — " + (slide.icon || "") + " " + slide.label },
       { role: "assistant", content: strip(r) }
     ]);
     setStatuses(prev => ({ ...prev, [slide.id]: "confirming" }));
@@ -318,22 +329,20 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
-    // Tarkista VAIN nykyisen dian nimi + "sovittu" — ei yleiset "sovittu"-osumat
-    const slideNameSovittu = slide.label.toLowerCase() + " sovittu";
-    const confirmed = r.includes("##ALL_SLIDES_DONE##") ||
-      (c.toLowerCase().includes(slideNameSovittu) && !lastLine.includes("?"));
+    // Luotettava tunnistus: pelkät tagit, ei NLP-parsintaa
+    const slideDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##");
+    const allDone   = r.includes("##ALL_SLIDES_DONE##") || (slideDone && isLast);
 
-    if (confirmed) {
+    if (slideDone) {
       setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
       const next = idx + 1;
-      if (next < cur.length && !r.includes("##ALL_SLIDES_DONE##")) {
+      if (!allDone && next < cur.length) {
         setSlideIdx(next);
         setTimeout(() => proposeSlide(next, null, cur), 600);
       } else {
         setScreen("ready");
-        setMsgs(prev => [...prev, { type: "divider", content: "✅ Kaikki diat valmiit — ladataan PowerPoint automaattisesti..." }]);
-        setTimeout(() => downloadPPTX(), 800);
+        setMsgs(prev => [...prev, { type: "divider", content: "✅ Kaikki diat valmiit — ladataan PowerPoint..." }]);
+        setTimeout(() => downloadPPTX(cur), 800);
       }
     }
   }
@@ -389,12 +398,12 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     if (files.length) await addFiles(files);
   }
 
-  async function downloadPPTX() {
+  async function downloadPPTX(slidesArr) {
     setBuilding(true);
     try {
       const r = await fetch(API + "/api/build-pptx", {
         method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
-        body: JSON.stringify({ slideData: collectedRef.current, slideStructure: slides }),
+        body: JSON.stringify({ slideData: collectedRef.current, slideStructure: slidesArr || slides }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
