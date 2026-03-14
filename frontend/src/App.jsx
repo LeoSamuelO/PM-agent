@@ -286,17 +286,18 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    if (r.includes("##ALL_SLIDES_DONE##")) {
-      setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
-      setScreen("ready");
-    } else if (c.toLowerCase().includes("sovittu") && !c.includes("?")) {
+    const confirmed = r.includes("##ALL_SLIDES_DONE##") ||
+      (c.toLowerCase().includes("sovittu") && !c.endsWith("?") && !c.split("\n").pop().includes("?"));
+
+    if (confirmed) {
       setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
       const next = idx + 1;
-      if (next < cur.length) {
+      if (next < cur.length && !r.includes("##ALL_SLIDES_DONE##")) {
         setSlideIdx(next);
         setTimeout(() => proposeSlide(next, null, cur), 600);
       } else {
         setScreen("ready");
+        setMsgs(prev => [...prev, { type: "divider", content: "✅ Kaikki diat valmiit — paina Lataa PPTX sivupalkista!" }]);
       }
     }
   }
@@ -413,7 +414,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
             Diat {doneCount}/{slides.length}
           </div>
           {slides.map(s => <Pill key={s.id} slide={s} status={statuses[s.id] || "pending"} />)}
-          {screen === "ready" && (
+          {(screen === "ready" || (slides.length > 0 && doneCount === slides.length)) && (
             <button onClick={downloadPPTX} disabled={building}
               style={{ background: building ? G.grey : G.orange, color: G.white, border: "none", borderRadius: 10, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: building ? "not-allowed" : "pointer", marginTop: 16 }}>
               {building ? "⏳ Rakennetaan..." : "🚀 Lataa PPTX"}
