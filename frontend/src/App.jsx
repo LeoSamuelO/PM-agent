@@ -96,13 +96,15 @@ function getConfirm(slide, isLast) {
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
   return `Käsittele käyttäjän palaute "${slide.label}" -diaan.
 
-Jos käyttäjä hyväksyy tai haluaa pieniä muutoksia jotka voit tehdä:
-1. Tallenna dian data: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
-2. Kerro lyhyesti mitä tallensit
-3. Lisää pakollisesti: ##SLIDE_DONE##
-${isLast ? "4. Koska tämä on VIIMEINEN DIA, lisää myös: ##ALL_SLIDES_DONE##\nÄlä kysy enää mitään — esitys on valmis." : ""}
+TÄRKEÄÄ: Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, tämä sopii, sovittu, tms.):
+- Tallenna HETI: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
+- Kirjoita sitten lyhyesti mitä tallensit (1-2 lausetta)
+- Lisää VIIMEISELLE RIVILLE pakollisesti täsmälleen näin: ##SLIDE_DONE##
+${isLast ? "- Tämä on VIIMEINEN DIA. Lisää myös täsmälleen: ##ALL_SLIDES_DONE##\n- ÄLÄ kysy mitään enää. Kirjoita vain 'Esitys on valmis ja tallentuu nyt.'" : ""}
 
-Jos käyttäjä haluaa isoja muutoksia, tee ne ensin ja kysy uusi vahvistus. ÄLÄ lisää ##SLIDE_DONE## ennen vahvistusta.`;
+MUISTA: ##SLIDE_DONE## TÄYTYY olla vastauksessasi jos käyttäjä hyväksyi. Älä koskaan jätä sitä pois.
+
+Jos käyttäjä haluaa muutoksia: tee muutokset, näytä päivitetty sisältö, ja kysy vahvistus uudelleen.`;
 }
 
 function Divider({ text }) {
@@ -347,8 +349,12 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Luotettava tunnistus: pelkät tagit, ei NLP-parsintaa
-    const slideDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##");
+    // Tunnistus: tagi on ensisijainen, mutta fallback jos AI unohtaa sen
+    const hasSlideData = Object.keys(extracted).length > 0;
+    const positiveReply = ["valmis", "tallennettu", "sovittu", "hyväksytty", "esitys on", "powerpoint"]
+      .some(kw => c.toLowerCase().includes(kw));
+    const slideDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##")
+      || (hasSlideData && positiveReply); // ← fallback: data tallennettu + positiivinen vastaus
     const allDone   = r.includes("##ALL_SLIDES_DONE##") || (slideDone && isLast);
 
     if (slideDone) {
@@ -605,6 +611,13 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
               style={{ flex: 1, background: G.light, outline: "none", resize: "vertical", border: "1.5px solid " + (input.length > 0 ? G.digitalBlue : G.silver), borderRadius: 11, padding: "10px 14px", fontSize: 14, fontFamily: "inherit", lineHeight: 1.6, color: G.deepBlue, minHeight: 80, maxHeight: 220 }} />
             <button onClick={doSend} disabled={!canSend}
               style={{ width: 38, height: 38, flexShrink: 0, alignSelf: "flex-end", background: canSend ? G.orange : G.silver, color: G.white, border: "none", borderRadius: "50%", fontSize: 18, cursor: canSend ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}>↑</button>
+            {(screen === "planning" || screen === "ready") && (
+              <button onClick={() => downloadPPTX(slidesRef.current)} disabled={building}
+                title="Lataa PowerPoint"
+                style={{ width: 38, height: 38, flexShrink: 0, alignSelf: "flex-end", background: building ? G.grey : G.mint, color: G.white, border: "none", borderRadius: "50%", fontSize: 16, cursor: building ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {building ? "⏳" : "⬇"}
+              </button>
+            )}
           </div>
         </div>
       </div>
