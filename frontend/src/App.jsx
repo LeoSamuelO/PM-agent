@@ -402,6 +402,22 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         <button onClick={startInterview} style={{ width: "100%", background: G.orange, color: G.white, border: "none", borderRadius: 12, padding: "14px 0", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
           Aloita haastattelu →
         </button>
+        <button onClick={async () => {
+          try {
+            const testData = {
+              slideData: { cover: { title: "Testiprojekti", tagline: "Testi toimii!", meta: "Gofore · 2025", projectLead: "Leo" } },
+              slideStructure: [{ id: "cover", label: "Kansi", icon: "🎯", layout: "title" }]
+            };
+            const r = await fetch(API + "/api/build-pptx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(testData) });
+            if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Virhe: " + (e.error || r.status)); return; }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            Object.assign(document.createElement("a"), { href: url, download: "testi.pptx" }).click();
+            URL.revokeObjectURL(url);
+          } catch(e) { alert("Yhteysvirhe: " + e.message); }
+        }} style={{ width: "100%", marginTop: 8, background: "transparent", color: G.codeBlue, border: "1px solid " + G.codeBlue, borderRadius: 12, padding: "10px 0", fontSize: 13, cursor: "pointer" }}>
+          🧪 Testaa PPTX-lataus
+        </button>
       </div>
     </div>
   );
