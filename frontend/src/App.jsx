@@ -19,7 +19,7 @@ KRIITTISET SÄÄNNÖT:
 async function callAPI(messages, extraSystem) {
   const system = extraSystem ? SYSTEM + "\n\n" + extraSystem : SYSTEM;
   const r = await fetch(API + "/api/chat", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
     body: JSON.stringify({ messages, system }),
   });
   const d = await r.json();
@@ -124,6 +124,9 @@ function Pill({ slide, status }) {
 
 export default function App() {
   const [screen, setScreen]           = useState("intro");
+  const [authed, setAuthed]             = useState(false);
+  const [pwInput, setPwInput]           = useState("");
+  const [pwError, setPwError]           = useState(false);
   const [msgs, setMsgs]               = useState([]);
   const [input, setInput]             = useState("");
   const [busy, setBusy]               = useState(false);
@@ -297,7 +300,8 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         setTimeout(() => proposeSlide(next, null, cur), 600);
       } else {
         setScreen("ready");
-        setMsgs(prev => [...prev, { type: "divider", content: "✅ Kaikki diat valmiit — paina Lataa PPTX sivupalkista!" }]);
+        setMsgs(prev => [...prev, { type: "divider", content: "✅ Kaikki diat valmiit — ladataan PowerPoint automaattisesti..." }]);
+        setTimeout(() => downloadPPTX(), 800);
       }
     }
   }
@@ -318,7 +322,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
         const base64 = btoa(binary);
         const r = await fetch(API + "/api/extract-file", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
           body: JSON.stringify({ base64, mimeType, fileName: f.name }),
         });
         const d = await r.json();
@@ -357,7 +361,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     setBuilding(true);
     try {
       const r = await fetch(API + "/api/build-pptx", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
         body: JSON.stringify({ slideData: collected, slideStructure: slides }),
       });
       if (!r.ok) {
@@ -376,6 +380,29 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
   const doneCount = Object.values(statuses).filter(s => s === "done").length;
   const showSidebar = screen === "planning" || screen === "ready";
   const currentSlide = slides[slideIdx];
+
+  if (!authed) return (
+    <div style={{ minHeight: "100vh", background: G.deepBlue, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Segoe UI',sans-serif" }}>
+      <div style={{ textAlign: "center", width: 320 }}>
+        <div style={{ width: 60, height: 60, background: G.orange, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: G.white, fontWeight: 700, margin: "0 auto 20px" }}>G</div>
+        <h2 style={{ color: G.white, marginBottom: 8 }}>Projektisuunnitelma-agentti</h2>
+        <p style={{ color: G.grey, fontSize: 13, marginBottom: 24 }}>Syötä salasana jatkaaksesi</p>
+        <input
+          type="password"
+          value={pwInput}
+          onChange={e => { setPwInput(e.target.value); setPwError(false); }}
+          onKeyDown={e => { if (e.key === "Enter") { if (pwInput === "AgenttiTestaus123") setAuthed(true); else setPwError(true); }}}
+          placeholder="Salasana"
+          style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid " + (pwError ? G.orange : G.grey), background: "rgba(255,255,255,0.08)", color: G.white, fontSize: 15, outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+        />
+        {pwError && <div style={{ color: G.orange, fontSize: 13, marginBottom: 8 }}>Väärä salasana</div>}
+        <button onClick={() => { if (pwInput === "AgenttiTestaus123") setAuthed(true); else setPwError(true); }}
+          style={{ width: "100%", background: G.orange, color: G.white, border: "none", borderRadius: 10, padding: "12px 0", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+          Kirjaudu →
+        </button>
+      </div>
+    </div>
+  );
 
   if (screen === "intro") return (
     <div style={{ minHeight: "100vh", background: G.deepBlue, display: "flex", alignItems: "center", justifyContent: "center", padding: 32, fontFamily: "'Segoe UI',sans-serif" }}>
@@ -408,7 +435,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
               slideData: { cover: { title: "Testiprojekti", tagline: "Testi toimii!", meta: "Gofore · 2025", projectLead: "Leo" } },
               slideStructure: [{ id: "cover", label: "Kansi", icon: "🎯", layout: "title" }]
             };
-            const r = await fetch(API + "/api/build-pptx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(testData) });
+            const r = await fetch(API + "/api/build-pptx", { method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" }, body: JSON.stringify(testData) });
             if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Virhe: " + (e.error || r.status)); return; }
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);

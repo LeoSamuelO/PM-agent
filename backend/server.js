@@ -11,6 +11,15 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
+// ── Auth middleware ───────────────────────────────────────────────
+const PASSWORD = process.env.APP_PASSWORD || "AgenttiTestaus123";
+app.use((req, res, next) => {
+  if (req.path === "/health") return next(); // health check ei vaadi salasanaa
+  const auth = req.headers["x-app-password"];
+  if (auth !== PASSWORD) return res.status(401).json({ error: "Väärä salasana" });
+  next();
+});
+
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Terveystarkistus ──────────────────────────────────────────────
