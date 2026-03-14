@@ -8,7 +8,9 @@ const G = {
   grey: "#8C9BAA", silver: "#D3D9DF", light: "#EEF1F3", bg: "#F4F6F9",
 };
 
+const TODAY = new Date().toLocaleDateString("fi-FI", { year:"numeric", month:"long", day:"numeric" });
 const SYSTEM = `Olet kokenut projektikonsultti Goforella. Kommunikoi AINA suomeksi.
+TÄNÄÄN ON: ${TODAY} — käytä tätä kun ehdotat päivämääriä tai arvioit aikatauluja.
 KRIITTISET SÄÄNNÖT:
 1. ÄLÄ KOSKAAN keksi tai oleta projektitietoja joita ei ole annettu
 2. Jos lähdemateriaaleja on annettu, LUE NE TARKASTI ja käytä VAIN niissä olevia tietoja
@@ -159,9 +161,15 @@ export default function App() {
   const [dragOver, setDragOver]       = useState(false);
   const bottom = useRef();
   const fileInput = useRef();
-  const collectedRef = useRef({});  // ← ref jotta downloadPPTX saa aina tuoreimman datan
+  const collectedRef  = useRef({});   // tuore slidedata downloadPPTX:lle
+  const screenRef     = useRef("intro"); // tuore screen doSend:lle (stale closure fix)
+  const slideIdxRef   = useRef(0);       // tuore slideIdx runPlanning:lle
+  const slidesRef     = useRef([]);      // tuore slides runPlanning:lle
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
+  useEffect(() => { screenRef.current = screen; }, [screen]);
+  useEffect(() => { slideIdxRef.current = slideIdx; }, [slideIdx]);
+  useEffect(() => { slidesRef.current = slides; }, [slides]);
 
   const history = () =>
     msgs.filter(m => m.role === "user" || m.role === "assistant")
@@ -187,9 +195,10 @@ export default function App() {
     setMsgs(prev => [...prev, { role: "user", content: display }]);
     setBusy(true);
     try {
-      if (screen === "interview")      await runInterview(apiText, newCtx);
-      else if (screen === "structure") await runStructureConfirm(apiText);
-      else if (screen === "planning")  await runPlanning(apiText);
+      const s = screenRef.current; // ← aina tuore arvo, ei stale closure
+      if (s === "interview")      await runInterview(apiText, newCtx);
+      else if (s === "structure") await runStructureConfirm(apiText);
+      else if (s === "planning")  await runPlanning(apiText);
     } catch (e) {
       setMsgs(prev => [...prev, { role: "assistant", content: "⚠️ Virhe: " + e.message }]);
     }
@@ -310,8 +319,8 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
   }
 
   async function runPlanning(userText) {
-    const cur = slides;
-    const idx = slideIdx;
+    const cur = slidesRef.current;   // ← tuore, ei stale closure
+    const idx = slideIdxRef.current; // ← tuore, ei stale closure
     const slide = cur[idx];
     const isLast = idx === cur.length - 1;
     const hist = [...history(), { role: "user", content: userText }];
@@ -341,7 +350,11 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         setTimeout(() => proposeSlide(next, null, cur), 600);
       } else {
         setScreen("ready");
-        setMsgs(prev => [...prev, { type: "divider", content: "✅ Kaikki diat valmiit — ladataan PowerPoint..." }]);
+        setMsgs(prev => [...prev,
+          { type: "divider", content: "✅ Kaikki diat valmiit — ladataan PowerPoint..." },
+          { role: "assistant", content: "Esitys on valmis! PowerPoint-lataus käynnistyy automaattisesti.\n\nJos lataus ei käynnisty, paina alla olevaa nappia:" },
+          { type: "download" }
+        ]);
         setTimeout(() => downloadPPTX(cur), 800);
       }
     }
@@ -534,7 +547,18 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
               </div>
             </div>
           )}
-          {msgs.map((m, i) => m.type === "divider" ? <Divider key={i} text={m.content} /> : <Bubble key={i} role={m.role} content={m.content} />)}
+          {msgs.map((m, i) => {
+            if (m.type === "divider") return <Divider key={i} text={m.content} />;
+            if (m.type === "download") return (
+              <div key={i} style={{ display:"flex", justifyContent:"center", margin:"12px 0" }}>
+                <button onClick={() => downloadPPTX(slidesRef.current)} disabled={building}
+                  style={{ background: building ? G.grey : G.orange, color:G.white, border:"none", borderRadius:12, padding:"14px 32px", fontSize:15, fontWeight:700, cursor:building?"not-allowed":"pointer", boxShadow:"0 2px 8px rgba(232,82,26,0.3)" }}>
+                  {building ? "⏳ Rakennetaan..." : "🚀 Lataa PowerPoint"}
+                </button>
+              </div>
+            );
+            return <Bubble key={i} role={m.role} content={m.content} />;
+          })}
           {busy && (
             <div style={{ display: "flex", gap: 10 }}>
               <div style={{ width: 32, height: 32, borderRadius: "50%", background: G.deepBlue, color: G.orange, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>G</div>
