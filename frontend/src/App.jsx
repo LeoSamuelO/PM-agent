@@ -15,7 +15,8 @@ KRIITTISET SÄÄNNÖT:
 3. Merkitse arviot selkeästi: (arvio)
 4. Jos jokin tieto puuttuu, KYSY se käyttäjältä — älä keksi
 5. Ole ytimekäs ja käytännönläheinen
-6. TÄRKEÄÄ: Olet osa sovellusta joka AUTOMAATTISESTI generoi PowerPoint-tiedoston backendissä. ÄLÄ KOSKAAN sano että et pysty luomaan PowerPointtia tai PPTX-tiedostoja — sovellus hoitaa sen puolestasi. Roolisi on kerätä sisältö dioihin, ei itse tehdä tiedostoa.`;
+6. TÄRKEÄÄ: Olet osa sovellusta joka AUTOMAATTISESTI generoi PowerPoint-tiedoston backendissä. ÄLÄ KOSKAAN sano että et pysty luomaan PowerPointtia tai PPTX-tiedostoja — sovellus hoitaa sen puolestasi. Roolisi on kerätä sisältö dioihin, ei itse tehdä tiedostoa.
+7. KRIITTINEN DIA-SÄÄNTÖ: Kun käsittelet dioja, käsittele AINA VAIN YKSI DIA KERRALLAAN. ÄLÄ KOSKAAN generoi useiden diojen sisältöä samassa vastauksessa. Odota käyttäjän hyväksyntä ennen kuin siirryt seuraavaan diaan.`;
 
 async function callAPI(messages, extraSystem) {
   const system = extraSystem ? SYSTEM + "\n\n" + extraSystem : SYSTEM;
@@ -32,7 +33,12 @@ function extractTag(text, tag) {
   const re = new RegExp("\\[" + tag + "\\]([\\s\\S]*?)\\[\\/" + tag + "\\]");
   const m = text.match(re);
   if (!m) return null;
-  try { return JSON.parse(m[1].trim()); } catch { return null; }
+  try {
+    const parsed = JSON.parse(m[1].trim());
+    if (tag === "STRUCTURE_DATA" && !Array.isArray(parsed))
+      return Object.values(parsed).filter(v => v && v.id);
+    return parsed;
+  } catch { return null; }
 }
 
 function extractSlideData(text) {
@@ -61,9 +67,13 @@ function getPropose(slide) {
     cards:    "korttiruudukko — 2-4 korttia ikoneilla ja värikoodeilla",
     "two-col":"kaksipalstainen — vasen ja oikea sarake omilla otsikoillaan",
   };
-  return `Ehdota "${slide.label}" -dian sisältö projektin tietojen pohjalta.
+  return `KÄSITTELE NYT VAIN TÄMÄ YKSI DIA: "${slide.label}"
+ÄLÄ generoi muita dioja. ÄLÄ näytä muiden diojen sisältöä. VAIN tämä yksi.
+
 Layout: ${layouts[slide.layout] || "vapaa rakenne"}
-Ehdota konkreettinen sisältö JA perustele lyhyesti miksi tämä rakenne sopii.
+
+Ehdota konkreettinen sisältö tälle yhdelle dialle projektin tietojen pohjalta.
+Perustele lyhyesti miksi tämä rakenne sopii.
 Kysy lopuksi: "Hyväksytkö tämän sisällön ja rakenteen, vai muutettavaa?"`;
 }
 
@@ -245,13 +255,17 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
     // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
-    const confirmedStructure = structure || window.__pendingStructure;
+    const rawStructure = structure || window.__pendingStructure;
+    // Varmista että rakenne on aina taulukko
+    const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
+      : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
+      : null;
     // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
     const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
       .some(kw => c.toLowerCase().includes(kw));
     const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
     const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
-      !lastLine.includes("?") && confirmedStructure;
+      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
