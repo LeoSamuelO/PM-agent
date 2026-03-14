@@ -14,7 +14,8 @@ KRIITTISET SÄÄNNÖT:
 2. Jos lähdemateriaaleja on annettu, LUE NE TARKASTI ja käytä VAIN niissä olevia tietoja
 3. Merkitse arviot selkeästi: (arvio)
 4. Jos jokin tieto puuttuu, KYSY se käyttäjältä — älä keksi
-5. Ole ytimekäs ja käytännönläheinen`;
+5. Ole ytimekäs ja käytännönläheinen
+6. TÄRKEÄÄ: Olet osa sovellusta joka AUTOMAATTISESTI generoi PowerPoint-tiedoston backendissä. ÄLÄ KOSKAAN sano että et pysty luomaan PowerPointtia tai PPTX-tiedostoja — sovellus hoitaa sen puolestasi. Roolisi on kerätä sisältö dioihin, ei itse tehdä tiedostoa.`;
 
 async function callAPI(messages, extraSystem) {
   const system = extraSystem ? SYSTEM + "\n\n" + extraSystem : SYSTEM;
@@ -243,12 +244,21 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    if (r.includes("##STRUCTURE_CONFIRMED##") && structure) {
-      setSlides(structure);
-      setStatuses(Object.fromEntries(structure.map(s => [s.id, "pending"])));
+    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
+    const confirmedStructure = structure || window.__pendingStructure;
+    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
+    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
+      .some(kw => c.toLowerCase().includes(kw));
+    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
+    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
+      !lastLine.includes("?") && confirmedStructure;
+
+    if (isConfirmed) {
+      setSlides(confirmedStructure);
+      setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
       setMsgs(prev => [...prev, { type: "divider", content: "Rakenne vahvistettu — aloitetaan diat" }]);
       setScreen("planning");
-      await proposeSlide(0, [...hist, { role: "assistant", content: c }], structure);
+      await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
     } else if (structure) {
       window.__pendingStructure = structure;
     }
