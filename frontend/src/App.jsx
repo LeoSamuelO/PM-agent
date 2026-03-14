@@ -140,6 +140,7 @@ export default function App() {
   const [dragOver, setDragOver]       = useState(false);
   const bottom = useRef();
   const fileInput = useRef();
+  const collectedRef = useRef({});  // ← ref jotta downloadPPTX saa aina tuoreimman datan
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
 
@@ -285,14 +286,19 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     ], docContext);
 
     const extracted = extractSlideData(r);
-    if (Object.keys(extracted).length) setCollected(prev => ({ ...prev, ...extracted }));
+    if (Object.keys(extracted).length) {
+      const newCollected = { ...collectedRef.current, ...extracted };
+      collectedRef.current = newCollected;   // ← päivitä ref välittömästi
+      setCollected(newCollected);
+    }
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
     const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
+    // Tarkista VAIN nykyisen dian nimi + "sovittu" — ei yleiset "sovittu"-osumat
+    const slideNameSovittu = slide.label.toLowerCase() + " sovittu";
     const confirmed = r.includes("##ALL_SLIDES_DONE##") ||
-      (c.toLowerCase().includes("sovittu") && !lastLine.includes("?")) ||
-      (isLast && c.toLowerCase().includes("valmis") && !lastLine.includes("?"));
+      (c.toLowerCase().includes(slideNameSovittu) && !lastLine.includes("?"));
 
     if (confirmed) {
       setStatuses(prev => ({ ...prev, [slide.id]: "done" }));
@@ -364,7 +370,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     try {
       const r = await fetch(API + "/api/build-pptx", {
         method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
-        body: JSON.stringify({ slideData: collected, slideStructure: slides }),
+        body: JSON.stringify({ slideData: collectedRef.current, slideStructure: slides }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
