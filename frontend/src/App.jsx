@@ -79,13 +79,18 @@ function getPropose(slide) {
     "two-col":"kaksipalstainen — vasen ja oikea sarake omilla otsikoillaan",
   };
   return `KÄSITTELE NYT VAIN TÄMÄ YKSI DIA: "${slide.label}"
-ÄLÄ generoi muita dioja. ÄLÄ näytä muiden diojen sisältöä. VAIN tämä yksi.
+ÄLÄ generoi muita dioja. VAIN tämä yksi.
 
 Layout: ${layouts[slide.layout] || "vapaa rakenne"}
 
-Ehdota konkreettinen sisältö tälle yhdelle dialle projektin tietojen pohjalta.
-Perustele lyhyesti miksi tämä rakenne sopii.
-Kysy lopuksi: "Hyväksytkö tämän sisällön ja rakenteen, vai muutettavaa?"`;
+Ehdota TIIVIS versio dian sisällöstä (oletuksena max 6-7 kohtaa, yksi idea per kohta).
+Jos aiheesta on paljon asiaa, tee silti ensin tiivis versio.
+
+Käyttäjä voi pyytää:
+- "lisää enemmän" → lisää yksityiskohtia nykyiseen diaan
+- "jaa kahdelle dialle" tai "tee tarkempi" → ehdota rakenne useammalle dialle ja lisää ne esitysrakenteeseen
+
+Kysy lopuksi: "Hyväksytkö tämän sisällön, vai haluatko lisää tai jakaa useammalle dialle?"`;
 }
 
 function getConfirm(slide, isLast) {
@@ -100,16 +105,18 @@ function getConfirm(slide, isLast) {
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
   return `Käsittele käyttäjän palaute "${slide.label}" -diaan.
 
-Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, tämä käy, sovittu tms.) TAI haluaa pieniä muutoksia:
-TEET NÄMÄ KAIKKI SAMASSA VASTAUKSESSA, JÄRJESTYKSESSÄ:
+Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, sovittu tms.):
 1. [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
 2. Kerro 1 lauseella mitä tallensit
 3. ##SLIDE_DONE##
-${isLast ? "4. ##ALL_SLIDES_DONE##\n5. Kirjoita: 'Esitys on valmis ja PowerPoint generoidaan automaattisesti.'" : ""}
+${isLast ? '4. ##ALL_SLIDES_DONE##\n5. Kirjoita: Esitys on valmis ja PowerPoint generoidaan automaattisesti.' : ''}
 
-TÄRKEÄÄ: Kohdat 1, 2 ja 3 AINA kun käyttäjä hyväksyy. Ei poikkeuksia.
-Jos käyttäjä haluaa isoja muutoksia: tee muutos ensin, näytä uusi versio, pyydä vahvistus.`;
-}
+Jos käyttäjä pyytää jakamaan useammalle dialle tai enemmän sisältöä:
+- Ehdota ensin jako tai lisäsisältö, kysy vahvistus
+- Tallenna kukin osa erikseen: [SLIDE_DATA:${slide.id}_2]${schema}[/SLIDE_DATA]
+- ##SLIDE_DONE## vasta kun kaikki hyväksytty
+
+Jos käyttäjä haluaa muita muutoksia: tee muutos, näytä, pyydä vahvistus.`;}
 
 function Divider({ text }) {
   return (
@@ -289,10 +296,7 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
-    if (structure) {
-      window.__pendingStructure = structure;
-      console.log("Pending structure saved:", structure.length, "slides");
-    }
+    if (structure) window.__pendingStructure = structure;
   }
 
   async function runStructureConfirm(userText) {
@@ -300,53 +304,48 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-
-Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, tehdään, käy tms.):
-- Kirjoita lyhyt vahvistus (1-2 lausetta)
-- Lisää PAKOLLISESTI: ##STRUCTURE_CONFIRMED##
-- Palauta rakenne: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
-- ÄLÄ aloita diojen sisältöä — se tapahtuu automaattisesti seuraavaksi
-
-Jos käyttäjä haluaa muuttaa: tee muutos, näytä uusi lista, pyydä vahvistus. Palauta aina [STRUCTURE_DATA].` }
+Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
+[STRUCTURE_DATA][...][/STRUCTURE_DATA]
+Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Päivitä pendingStructure aina kun uusi rakenne saadaan
-    if (structure) window.__pendingStructure = structure;
-
-    // Käytä uusinta saatavilla olevaa rakennetta
-    const rawStructure = window.__pendingStructure;
+    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
+    const rawStructure = structure || window.__pendingStructure;
+    // Varmista että rakenne on aina taulukko
     const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
       : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
       : null;
-
-    // Tunnistus: tagi tai lyhyt hyväksyntä käyttäjältä
-    const tagConfirm = r.includes("##STRUCTURE_CONFIRMED##");
-    const shortYes = ["ok", "joo", "kyllä", "selvä", "hyvä", "sopii", "tehdään", "käy", "yes"]
-      .includes(userText.trim().toLowerCase());
-    const positiveWords = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään",
-      "sovittu", "edetään", "käydään", "rakennetaan", "luodaan"];
-    const naturalConfirm = positiveWords.some(kw => c.toLowerCase().includes(kw));
-    const isConfirmed = (tagConfirm || shortYes || naturalConfirm)
-      && confirmedStructure && confirmedStructure.length > 0;
+    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
+    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
+      .some(kw => c.toLowerCase().includes(kw));
+    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
+    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
+      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
-      slidesRef.current = confirmedStructure;
+      slidesRef.current = confirmedStructure;   // ← sync heti, ei odoteta useEffect:iä
       setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
       setMsgs(prev => [...prev, { type: "divider", content: "✅ Vaihe 3 — Diojen sisällöntuotanto" }]);
       setScreen("planning");
-      screenRef.current = "planning";
+      screenRef.current = "planning";           // ← sync heti
       setSlideIdx(0);
-      slideIdxRef.current = 0;
+      slideIdxRef.current = 0;                  // ← sync heti
       await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
+    } else if (structure) {
+      window.__pendingStructure = structure;
     }
   }
 
+  const proposingRef = useRef(false);
+
   async function proposeSlide(idx, hist, slidesArr) {
+    if (proposingRef.current) return; // estä tuplapyyntö
+    proposingRef.current = true;
     const cur = slidesArr || slides;
     setSlideIdx(idx);
     setStatuses(prev => {
@@ -364,6 +363,7 @@ Jos käyttäjä haluaa muuttaa: tee muutos, näytä uusi lista, pyydä vahvistus
       { role: "assistant", content: strip(r) }
     ]);
     setStatuses(prev => ({ ...prev, [slide.id]: "confirming" }));
+    proposingRef.current = false;
   }
 
   async function runPlanning(userText) {
@@ -582,22 +582,15 @@ Jos käyttäjä haluaa muuttaa: tee muutos, näytä uusi lista, pyydä vahvistus
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ background: G.deepBlue, padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ width: 28, height: 28, background: G.orange, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: G.white, fontWeight: 700, fontSize: 12 }}>G</div>
-          <div style={{ flex: 1 }}>
+          <div>
             <div style={{ color: G.white, fontWeight: 600, fontSize: 13 }}>Projektisuunnitelma-agentti</div>
             <div style={{ color: G.codeBlue, fontSize: 11 }}>
               {screen === "interview"  ? "💬 Haastattelu" :
                screen === "structure"  ? "🔍 Analyysi & rakenne" :
-               screen === "planning" && currentSlide ? "📄 Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon || "") + " " + currentSlide.label :
+               screen === "planning" && currentSlide ? (currentSlide.icon || "📄") + " " + currentSlide.label :
                screen === "ready" ? "✅ Kaikki diat sovittu" : ""}
             </div>
           </div>
-          {Object.keys(collectedRef.current).length > 0 && (
-            <button onClick={() => downloadPPTX(slidesRef.current)} disabled={building}
-              title={"Lataa PPTX (" + Object.keys(collectedRef.current).length + " diaa tallennettu)"}
-              style={{ background: building ? G.grey : G.mint, color: G.white, border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: building ? "not-allowed" : "pointer", flexShrink: 0 }}>
-              {building ? "⏳" : "⬇ Lataa PPTX"}
-            </button>
-          )}
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", position: "relative" }}
