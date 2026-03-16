@@ -54,7 +54,7 @@ function extractTag(text, tag) {
 
 function extractSlideData(text) {
   const out = {};
-  const re = /\[SLIDE_DATA:([\w-]+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
+  const re = /\[SLIDE_DATA:(\w+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
   let m;
   while ((m = re.exec(text))) {
     try { out[m[1]] = JSON.parse(m[2].trim()); } catch {}
@@ -64,7 +64,7 @@ function extractSlideData(text) {
 
 function strip(text) {
   return text
-    .replace(/\[SLIDE_DATA:[\w-]+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
+    .replace(/\[SLIDE_DATA:\w+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
     .replace(/\[STRUCTURE_DATA\][\s\S]*?\[\/STRUCTURE_DATA\]/g, "")
     .replace(/##[\w_]+##/g, "").trim();
 }
@@ -156,7 +156,8 @@ function Pill({ slide, status }) {
 
 export default function App() {
   const [screen, setScreen]           = useState("intro");
-  const [authed, setAuthed]             = useState(false);
+  // Palauta kirjautumistila sivun päivityksen jälkeen
+  const [authed, setAuthed]             = useState(!!localStorage.getItem("pm_token"));
   const [pwInput, setPwInput]           = useState("");
   const [pwError, setPwError]           = useState(false);
   const [msgs, setMsgs]               = useState([]);
@@ -178,15 +179,6 @@ export default function App() {
   const slidesRef     = useRef([]);      // tuore slides runPlanning:lle
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
-
-  // Validoi token backendistä sivun latautuessa
-  useEffect(() => {
-    const token = localStorage.getItem("pm_token");
-    if (!token) return;
-    fetch(API + "/api/warmup", { headers: { "x-session-token": token } })
-      .then(r => { if (r.ok) setAuthed(true); else localStorage.removeItem("pm_token"); })
-      .catch(() => {});
-  }, []);
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { slideIdxRef.current = slideIdx; }, [slideIdx]);
   useEffect(() => { slidesRef.current = slides; }, [slides]);
@@ -297,7 +289,10 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
-    if (structure) window.__pendingStructure = structure;
+    if (structure) {
+      window.__pendingStructure = structure;
+      console.log("Pending structure saved:", structure.length, "slides");
+    }
   }
 
   async function runStructureConfirm(userText) {
@@ -305,40 +300,49 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
-[STRUCTURE_DATA][...][/STRUCTURE_DATA]
-Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
+
+Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, tehdään, käy tms.):
+- Kirjoita lyhyt vahvistus (1-2 lausetta)
+- Lisää PAKOLLISESTI: ##STRUCTURE_CONFIRMED##
+- Palauta rakenne: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
+- ÄLÄ aloita diojen sisältöä — se tapahtuu automaattisesti seuraavaksi
+
+Jos käyttäjä haluaa muuttaa: tee muutos, näytä uusi lista, pyydä vahvistus. Palauta aina [STRUCTURE_DATA].` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
-    const rawStructure = structure || window.__pendingStructure;
-    // Varmista että rakenne on aina taulukko
+    // Päivitä pendingStructure aina kun uusi rakenne saadaan
+    if (structure) window.__pendingStructure = structure;
+
+    // Käytä uusinta saatavilla olevaa rakennetta
+    const rawStructure = window.__pendingStructure;
     const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
       : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
       : null;
-    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
-    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
-      .some(kw => c.toLowerCase().includes(kw));
-    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
-    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
-      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
+
+    // Tunnistus: tagi tai lyhyt hyväksyntä käyttäjältä
+    const tagConfirm = r.includes("##STRUCTURE_CONFIRMED##");
+    const shortYes = ["ok", "joo", "kyllä", "selvä", "hyvä", "sopii", "tehdään", "käy", "yes"]
+      .includes(userText.trim().toLowerCase());
+    const positiveWords = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään",
+      "sovittu", "edetään", "käydään", "rakennetaan", "luodaan"];
+    const naturalConfirm = positiveWords.some(kw => c.toLowerCase().includes(kw));
+    const isConfirmed = (tagConfirm || shortYes || naturalConfirm)
+      && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
-      slidesRef.current = confirmedStructure;   // ← sync heti, ei odoteta useEffect:iä
+      slidesRef.current = confirmedStructure;
       setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
       setMsgs(prev => [...prev, { type: "divider", content: "✅ Vaihe 3 — Diojen sisällöntuotanto" }]);
       setScreen("planning");
-      screenRef.current = "planning";           // ← sync heti
+      screenRef.current = "planning";
       setSlideIdx(0);
-      slideIdxRef.current = 0;                  // ← sync heti
+      slideIdxRef.current = 0;
       await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
-    } else if (structure) {
-      window.__pendingStructure = structure;
     }
   }
 
@@ -391,8 +395,8 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const positiveReply = positiveWords.some(kw => c.toLowerCase().includes(kw));
     // Fallback 1: data tallennettu + positiivinen vastaus ilman kysymystä
     const fallback1 = hasData && positiveReply && noQuestion;
-    // Fallback 2: viimeinen dia + data tallennettu + positiivinen vastaus
-    const fallback2 = isLast && hasData && noQuestion;
+    // Fallback 2: viimeinen dia + positiivinen vastaus ilman kysymystä (vaikka ei dataa)
+    const fallback2 = isLast && positiveReply && noQuestion;
     const slideDone = tagDone || fallback1 || fallback2;
     const allDone   = r.includes("##ALL_SLIDES_DONE##") || (slideDone && isLast);
 
@@ -578,15 +582,22 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ background: G.deepBlue, padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ width: 28, height: 28, background: G.orange, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: G.white, fontWeight: 700, fontSize: 12 }}>G</div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ color: G.white, fontWeight: 600, fontSize: 13 }}>Projektisuunnitelma-agentti</div>
             <div style={{ color: G.codeBlue, fontSize: 11 }}>
               {screen === "interview"  ? "💬 Haastattelu" :
                screen === "structure"  ? "🔍 Analyysi & rakenne" :
-               screen === "planning" && currentSlide ? (currentSlide.icon || "📄") + " " + currentSlide.label :
+               screen === "planning" && currentSlide ? "📄 Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon || "") + " " + currentSlide.label :
                screen === "ready" ? "✅ Kaikki diat sovittu" : ""}
             </div>
           </div>
+          {Object.keys(collectedRef.current).length > 0 && (
+            <button onClick={() => downloadPPTX(slidesRef.current)} disabled={building}
+              title={"Lataa PPTX (" + Object.keys(collectedRef.current).length + " diaa tallennettu)"}
+              style={{ background: building ? G.grey : G.mint, color: G.white, border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: building ? "not-allowed" : "pointer", flexShrink: 0 }}>
+              {building ? "⏳" : "⬇ Lataa PPTX"}
+            </button>
+          )}
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", position: "relative" }}
