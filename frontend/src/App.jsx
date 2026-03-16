@@ -27,9 +27,8 @@ async function callAPI(messages, extraSystem, forceSearch) {
   // Tunnista automaattisesti jos viesti pyytää hakemaan tietoa
   const lastUserMsg = [...messages].reverse().find(m => m.role === "user")?.content || "";
   const useSearch = forceSearch || SEARCH_TRIGGERS.some(t => lastUserMsg.toLowerCase().includes(t));
-  const token = sessionStorage.getItem("pm_token") || "";
   const r = await fetch(API + "/api/chat", {
-    method: "POST", headers: { "Content-Type": "application/json", "x-session-token": token },
+    method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
     body: JSON.stringify({ messages, system, useSearch }),
   });
   const d = await r.json();
@@ -97,13 +96,15 @@ function getConfirm(slide, isLast) {
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
   return `Käsittele käyttäjän palaute "${slide.label}" -diaan.
 
-Jos käyttäjä hyväksyy tai haluaa pieniä muutoksia jotka voit tehdä:
-1. Tallenna dian data: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
-2. Kerro lyhyesti mitä tallensit
-3. Lisää pakollisesti: ##SLIDE_DONE##
-${isLast ? "4. Koska tämä on VIIMEINEN DIA, lisää myös: ##ALL_SLIDES_DONE##\nÄlä kysy enää mitään — esitys on valmis." : ""}
+Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, tämä käy, sovittu tms.) TAI haluaa pieniä muutoksia:
+TEET NÄMÄ KAIKKI SAMASSA VASTAUKSESSA, JÄRJESTYKSESSÄ:
+1. [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
+2. Kerro 1 lauseella mitä tallensit
+3. ##SLIDE_DONE##
+${isLast ? "4. ##ALL_SLIDES_DONE##\n5. Kirjoita: 'Esitys on valmis ja PowerPoint generoidaan automaattisesti.'" : ""}
 
-Jos käyttäjä haluaa isoja muutoksia, tee ne ensin ja kysy uusi vahvistus. ÄLÄ lisää ##SLIDE_DONE## ennen vahvistusta.`;
+TÄRKEÄÄ: Kohdat 1, 2 ja 3 AINA kun käyttäjä hyväksyy. Ei poikkeuksia.
+Jos käyttäjä haluaa isoja muutoksia: tee muutos ensin, näytä uusi versio, pyydä vahvistus.`;
 }
 
 function Divider({ text }) {
@@ -209,26 +210,6 @@ export default function App() {
       setMsgs(prev => [...prev, { role: "assistant", content: "⚠️ Virhe: " + e.message }]);
     }
     setBusy(false);
-  }
-
-  async function doLogin() {
-    if (!pwInput) return;
-    try {
-      const r = await fetch(API + "/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pwInput }),
-      });
-      const d = await r.json();
-      if (d.token) {
-        sessionStorage.setItem("pm_token", d.token);
-        setAuthed(true);
-      } else {
-        setPwError(true);
-      }
-    } catch {
-      setPwError(true);
-    }
   }
 
   function startInterview() {
@@ -368,8 +349,18 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Luotettava tunnistus: pelkät tagit, ei NLP-parsintaa
-    const slideDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##");
+    // Tunnistus: tagi on ensisijainen, fallback NLP jos AI unohtaa tagin
+    const tagDone = r.includes("##SLIDE_DONE##") || r.includes("##ALL_SLIDES_DONE##");
+    const hasData = Object.keys(extracted).length > 0;
+    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
+    const noQuestion = !lastLine.includes("?");
+    const positiveWords = ["hyväksytty", "tallennettu", "valmis", "sovittu", "siirrytään", "loistava", "erinomainen", "generoi", "powerpoint"];
+    const positiveReply = positiveWords.some(kw => c.toLowerCase().includes(kw));
+    // Fallback 1: data tallennettu + positiivinen vastaus ilman kysymystä
+    const fallback1 = hasData && positiveReply && noQuestion;
+    // Fallback 2: viimeinen dia + positiivinen vastaus ilman kysymystä (vaikka ei dataa)
+    const fallback2 = isLast && positiveReply && noQuestion;
+    const slideDone = tagDone || fallback1 || fallback2;
     const allDone   = r.includes("##ALL_SLIDES_DONE##") || (slideDone && isLast);
 
     if (slideDone) {
@@ -407,7 +398,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
         const base64 = btoa(binary);
         const r = await fetch(API + "/api/extract-file", {
-          method: "POST", headers: { "Content-Type": "application/json", "x-session-token": sessionStorage.getItem("pm_token") || "" },
+          method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
           body: JSON.stringify({ base64, mimeType, fileName: f.name }),
         });
         const d = await r.json();
@@ -446,8 +437,8 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     setBuilding(true);
     try {
       const r = await fetch(API + "/api/build-pptx", {
-        method: "POST", headers: { "Content-Type": "application/json", "x-session-token": sessionStorage.getItem("pm_token") || "" },
-        body: JSON.stringify({ slideData: collectedRef.current, slideStructure: slidesArr || slidesRef.current }),
+        method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
+        body: JSON.stringify({ slideData: collectedRef.current, slideStructure: slidesArr || slides }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
@@ -476,12 +467,12 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
           type="password"
           value={pwInput}
           onChange={e => { setPwInput(e.target.value); setPwError(false); }}
-          onKeyDown={e => { if (e.key === "Enter") doLogin(); }}
+          onKeyDown={e => { if (e.key === "Enter") { if (pwInput === "AgenttiTestaus123") setAuthed(true); else setPwError(true); }}}
           placeholder="Salasana"
           style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid " + (pwError ? G.orange : G.grey), background: "rgba(255,255,255,0.08)", color: G.white, fontSize: 15, outline: "none", boxSizing: "border-box", marginBottom: 8 }}
         />
         {pwError && <div style={{ color: G.orange, fontSize: 13, marginBottom: 8 }}>Väärä salasana</div>}
-        <button onClick={doLogin}
+        <button onClick={() => { if (pwInput === "AgenttiTestaus123") setAuthed(true); else setPwError(true); }}
           style={{ width: "100%", background: G.orange, color: G.white, border: "none", borderRadius: 10, padding: "12px 0", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
           Kirjaudu →
         </button>
@@ -520,7 +511,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
               slideData: { cover: { title: "Testiprojekti", tagline: "Testi toimii!", meta: "Gofore · 2025", projectLead: "Leo" } },
               slideStructure: [{ id: "cover", label: "Kansi", icon: "🎯", layout: "title" }]
             };
-            const r = await fetch(API + "/api/build-pptx", { method: "POST", headers: { "Content-Type": "application/json", "x-session-token": sessionStorage.getItem("pm_token") || "" }, body: JSON.stringify(testData) });
+            const r = await fetch(API + "/api/build-pptx", { method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" }, body: JSON.stringify(testData) });
             if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Virhe: " + (e.error || r.status)); return; }
             const blob = await r.blob();
             const url = URL.createObjectURL(blob);
