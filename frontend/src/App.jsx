@@ -66,7 +66,8 @@ function strip(text) {
   return text
     .replace(/\[SLIDE_DATA:[\w-]+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
     .replace(/\[STRUCTURE_DATA\][\s\S]*?\[\/STRUCTURE_DATA\]/g, "")
-    .replace(/##[\w_]+##/g, "").trim();
+    .replace(/##[\w_]+##/g, "")
+    .replace(/\[FOCUS_TYPE\][\s\S]*?\[\/FOCUS_TYPE\]/g, "").trim();
 }
 
 function getPropose(slide) {
@@ -252,7 +253,7 @@ export default function App() {
     const hist = [...history(), { role: "user", content: userText }];
     const r = await callAPI([
       ...hist,
-      { role: "user", content: "[META] Onko projektin perustiedot (tavoite + aikataulu + osapuolet) riittävällä tasolla? Jos ei, kysy yksi tärkein puuttuva tieto lyhyesti. Jos kyllä, vastaa lyhyesti ja lisää: ##READY_TO_PLAN##" }
+      { role: "user", content: "[META] Onko projektin perustiedot (tavoite, aikataulu, osapuolet) kerätty riittävällä tasolla? ÄLÄ kysy tarkentavia kysymyksiä aikatauluista, päivämääristä tai yksityiskohdista — ne selviävät myöhemmin. Jos perustiedot ovat riittävät, vastaa lyhyesti ja lisää: ##READY_TO_PLAN## Jos ei, kysy YKSI puuttuvin perustieto." }
     ], ctx || docContext);
 
     const c = strip(r);
@@ -293,36 +294,50 @@ Odota käyttäjän vastausta ennen kuin jatkat.` }
 
   async function runFocusConfirm(userText) {
     const hist = [...history(), { role: "user", content: userText }];
+
+    // Tunnistetaan onko käyttäjä jo valinnut fokuksen vai vasta keskustelee havainnoista
+    const hasFocus = !!window.__focusType;
+
     const r = await callAPI([
       ...hist,
-      { role: "user", content: `Käyttäjä valitsi esityksen fokuksen: "${userText}"
+      { role: "user", content: hasFocus
+        ? `Käyttäjä kommentoi havaintoja fokuksesta "${window.__focusType}".
 
-Tee seuraavat asiat:
+Keskustele havainnoista: hyväksy, lisää tai muokkaa käyttäjän palautteen mukaan.
+Päivitä lista jos tarpeen ja kysy uudelleen: "Onko tämä lista oikea, vai lisättävää?"
+
+Kun käyttäjä on tyytyväinen havaintoihin (ok/joo/hyvä/sovittu):
+- Lisää: ##OBSERVATIONS_CONFIRMED##
+- ÄLÄ vielä ehdota diarakennetta`
+        : `Käyttäjä valitsi esityksen fokuksen: "${userText}"
+
 1. Vahvista valittu fokus lyhyesti (1 lause)
-2. Listaa 3-5 tärkeintä projektiin liittyvää havaintoa JUURI tämän fokuksen näkökulmasta
-3. Kysy: "Oletko samaa mieltä näistä havainnoista, vai haluatko nostaa jonkin muun asian esiin?"
-4. Lisää: ##FOCUS_CONFIRMED## ja tallenna fokus: [FOCUS_TYPE]${userText}[/FOCUS_TYPE]
+2. Tallenna: [FOCUS_TYPE]${userText}[/FOCUS_TYPE]
+3. Listaa 4-6 tärkeintä havaintoa JUURI tämän fokuksen näkökulmasta projektista
+4. Kysy: "Oletko samaa mieltä näistä havainnoista, vai haluatko lisätä tai muuttaa jotain?"
 
-Älä vielä ehdota diarakennetta.` }
+ÄLÄ ehdota diarakennetta vielä.`
+      }
     ], docContext);
 
-    const c = strip(r);
+    const responseText = strip(r);
     const focusMatch = r.match(/\[FOCUS_TYPE\]([\s\S]*?)\[\/FOCUS_TYPE\]/);
     if (focusMatch) {
-      setFocusType(focusMatch[1].trim());
-      window.__focusType = focusMatch[1].trim();
+      const ft = focusMatch[1].trim();
+      setFocusType(ft);
+      window.__focusType = ft;
     }
-    setMsgs(prev => [...prev, { role: "assistant", content: c }]);
+    setMsgs(prev => [...prev, { role: "assistant", content: responseText }]);
 
-    // Jos käyttäjä vahvistaa havainnot, siirrytään rakenne-vaiheeseen
-    const confirmed = r.includes("##FOCUS_CONFIRMED##");
+    // Siirrytään rakenteeseen vasta kun havainnot on vahvistettu
+    const observationsConfirmed = r.includes("##OBSERVATIONS_CONFIRMED##");
     const msgWords = userText.trim().toLowerCase().split(/\s+/);
-    const shortYes = msgWords.length <= 3 &&
+    const shortYes = hasFocus && msgWords.length <= 3 &&
       ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep"]
         .some(w => msgWords.includes(w));
 
-    if (confirmed || shortYes) {
-      await runInsightsAndStructure([...hist, { role: "assistant", content: c }]);
+    if (observationsConfirmed || shortYes) {
+      await runInsightsAndStructure([...hist, { role: "assistant", content: responseText }]);
     }
   }
 
@@ -333,18 +348,13 @@ Tee seuraavat asiat:
       ...(hist || history()),
       { role: "user", content: `Tee kaksi asiaa SELKEÄSTI EROTELTUINA:
 
-## OSA 1: PROJEKTIN OIVALLUKSET
-Listaa 3-5 tärkeintä havaintoa tästä projektista numerottuina (1. 2. 3. jne). Mitä PM:n täytyy erityisesti huomioida? Kriittiset riskit, aikataulupaine, pullonkaulat. Ole konkreettinen ja lyhyt.
-
-## OSA 2: EHDOTETTU DIARAKENNE
-Näytä ehdotettu rakenne SELKEÄNÄ LISTANA tässä muodossa (yksi dia per rivi):
+Ehdota diarakenne SELKEÄNÄ LISTANA tässä muodossa (yksi dia per rivi):
 1. 🎯 Kansi — projektin nimi ja perustiedot
 2. 📊 Yhteenveto — ...
 jne.
 
-Perustele lyhyesti miksi juuri tämä rakenne sopii tälle projektille.
-
-Kysy sitten: "Hyväksytkö tämän rakenteen, vai haluatko lisätä/poistaa/muuttaa jotain diaa?"
+Perustele LYHYESTI (1-2 lausetta) miksi rakenne sopii valitulle fokukselle.
+Kysy: "Hyväksytkö tämän rakenteen, vai haluatko muuttaa jotain?"
 
 Esityksen fokus on: ${window.__focusType || "yleinen projektisuunnitelma"}
 
@@ -654,7 +664,7 @@ Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
             <div style={{ color: G.white, fontWeight: 600, fontSize: 13 }}>Projektisuunnitelma-agentti</div>
             <div style={{ color: G.codeBlue, fontSize: 11 }}>
               {screen === "interview"  ? "💬 Vaihe 1 — Haastattelu" :
-               screen === "focus"      ? "🎯 Vaihe 2 — Esityksen fokus" :
+               screen === "focus"      ? ("🎯 Vaihe 2 — " + (focusType ? focusType : "Esityksen fokus")) :
                screen === "structure"  ? "🔍 Vaihe 3 — Diarakenne" :
                screen === "planning" && currentSlide ? "📄 Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon||"") + " " + currentSlide.label :
                screen === "ready"     ? "✅ Kaikki diat sovittu" : ""}
