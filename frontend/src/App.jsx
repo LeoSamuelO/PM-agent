@@ -211,8 +211,9 @@ export default function App() {
     setBusy(true);
     try {
       const s = screenRef.current; // ← aina tuore arvo, ei stale closure
-      if (s === "interview")      await runInterview(apiText, newCtx);
+      if (s === "interview") await runInterview(apiText, newCtx);
       else if (s === "focus")     await runFocusConfirm(apiText);
+      else if (s === "insights")  await runInsightsConfirm(apiText);
       else if (s === "structure") await runStructureConfirm(apiText);
       else if (s === "planning")  await runPlanning(apiText);
     } catch (e) {
@@ -245,7 +246,7 @@ export default function App() {
     setScreen("interview");
     setMsgs([
       { type: "divider", content: "💬 Vaihe 1 — Haastattelu" },
-      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nEtenen kanssasi kolmessa vaiheessa:\n1️⃣ Kerätään projektitiedot\n2️⃣ Valitaan esityksen fokus ja vahvistetaan tärkeimmät havainnot\n3️⃣ Rakennetaan diat yhdessä" }
+      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nEtenen kanssasi viidessä vaiheessa:\n1️⃣ Kerätään projektitiedot\n2️⃣ Valitaan esityksen fokus\n3️⃣ Vahvistetaan tärkeimmät havainnot\n4️⃣ Suunnitellaan diarakenne\n5️⃣ Rakennetaan diat yhdessä" }
     ]);
   }
 
@@ -259,101 +260,112 @@ export default function App() {
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
     // Only transition if READY and no question mark at end (AI isn't still asking something)
-    const lastSentence = c.trim().split("\n").filter(l => l.trim()).pop() || "";
-    const stillAsking = lastSentence.includes("?");
-    if (r.includes("##READY_TO_PLAN##") && !stillAsking) {
-      await runFocus([...hist, { role: "assistant", content: c }]);
-    }
     if (ctx && ctx !== docContext) setDocContext(ctx);
+    // Näytä "Siirry fokukseen" -nappi kun AI on valmis
+    if (r.includes("##READY_TO_PLAN##")) {
+      window.__interviewHist = [...hist, { role: "assistant", content: c }];
+      setMsgs(prev => [...prev, { type: "action", action: "go_focus", label: "➡️ Siirry valitsemaan fokus" }]);
+    }
   }
 
 
   async function runFocus(hist) {
     setScreen("focus");
     screenRef.current = "focus";
+    window.__focusType = "";
     setMsgs(prev => [...prev, { type: "divider", content: "🎯 Vaihe 2 — Esityksen fokus" }]);
     const r = await callAPI([
       ...(hist || history()),
-      { role: "user", content: `Projektin perustiedot on kerätty. Nyt selvitetään mitä tällä esityksellä halutaan saavuttaa.
+      { role: "user", content: `OHJE: Kysy VAIN tämä yksi kysymys. ÄLÄ ehdota diarakennetta, havaintoja tai muuta sisältöä.
 
-Esittele lyhyesti (2-3 lausetta) mikä on projektin tilanne ja kerro sitten:
-"Mihin tarkoitukseen tämä esitys tehdään? Valitse sopivin tai kuvaile oma:"
+Kirjoita 1 lause projektin tilanteesta, sitten kysy:
 
-1. 📋 Yleinen projektisuunnitelma — kokonaiskuva projektin etenemisestä
-2. ⚠️ Riskianalyysi — fokus riskeihin, riippuvuuksiin ja mitigointiin
-3. 📅 Aikataulukatsaus — fokus aikatauluun, milestonehin ja kriittiseen polkuun
-4. 🚀 Kickoff-materiaali — esitys projektin käynnistyskokoukseen
-5. 👥 Sidosryhmäraportti — tilannekatsaus johdolle tai asiakkaalle
-6. 🔍 Joku muu fokus — käyttäjä kertoo itse
+"Mihin tarkoitukseen tämä esitys tehdään?"
+1. 📋 Yleinen projektisuunnitelma
+2. ⚠️ Riskianalyysi
+3. 📅 Aikataulukatsaus
+4. 🚀 Kickoff-materiaali
+5. 👥 Sidosryhmäraportti johdolle / asiakkaalle
+6. 🔍 Muu — kuvaile itse
 
-Odota käyttäjän vastausta ennen kuin jatkat.` }
+Odota vastaus. ÄLÄ jatka.` }
     ], docContext);
     setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
-    if (hist) window.__focusHist = hist;
   }
 
   async function runFocusConfirm(userText) {
     const hist = [...history(), { role: "user", content: userText }];
-
-    // Tunnistetaan onko käyttäjä jo valinnut fokuksen vai vasta keskustelee havainnoista
-    const hasFocus = !!window.__focusType;
-
     const r = await callAPI([
       ...hist,
-      { role: "user", content: hasFocus
-        ? `Käyttäjä kommentoi havaintoja fokuksesta "${window.__focusType}".
+      { role: "user", content: `Käyttäjä valitsi fokuksen: "${userText}"
 
-Keskustele havainnoista: hyväksy, lisää tai muokkaa käyttäjän palautteen mukaan.
-Päivitä lista jos tarpeen ja kysy uudelleen: "Onko tämä lista oikea, vai lisättävää?"
+1. Tallenna fokus: [FOCUS_TYPE]${userText}[/FOCUS_TYPE]
+2. Listaa 4-6 tärkeintä havaintoa projektista JUURI tämän fokuksen näkökulmasta
+3. Kysy: "Oletko samaa mieltä näistä havainnoista? Voit lisätä, poistaa tai muuttaa ennen kuin jatketaan."
 
-Kun käyttäjä on tyytyväinen havaintoihin (ok/joo/hyvä/sovittu):
-- Lisää: ##OBSERVATIONS_CONFIRMED##
-- ÄLÄ vielä ehdota diarakennetta`
-        : `Käyttäjä valitsi esityksen fokuksen: "${userText}"
-
-1. Vahvista valittu fokus lyhyesti (1 lause)
-2. Tallenna: [FOCUS_TYPE]${userText}[/FOCUS_TYPE]
-3. Listaa 4-6 tärkeintä havaintoa JUURI tämän fokuksen näkökulmasta projektista
-4. Kysy: "Oletko samaa mieltä näistä havainnoista, vai haluatko lisätä tai muuttaa jotain?"
-
-ÄLÄ ehdota diarakennetta vielä.`
-      }
+ÄLÄ ehdota diarakennetta vielä. Odota käyttäjän vahvistus havainnoille.` }
     ], docContext);
 
-    const responseText = strip(r);
-    const focusMatch = r.match(/\[FOCUS_TYPE\]([\s\S]*?)\[\/FOCUS_TYPE\]/);
-    if (focusMatch) {
-      const ft = focusMatch[1].trim();
-      setFocusType(ft);
-      window.__focusType = ft;
-    }
-    setMsgs(prev => [...prev, { role: "assistant", content: responseText }]);
+    const txt = strip(r);
+    const fm = r.match(/\[FOCUS_TYPE\]([\s\S]*?)\[\/FOCUS_TYPE\]/);
+    if (fm) { window.__focusType = fm[1].trim(); setFocusType(fm[1].trim()); }
+    setMsgs(prev => [...prev, { role: "assistant", content: txt }]);
 
-    // Siirrytään rakenteeseen vasta kun havainnot on vahvistettu
-    const observationsConfirmed = r.includes("##OBSERVATIONS_CONFIRMED##");
+    // Siirrytään insights-vaiheeseen tallentamalla historia
+    window.__focusHist = [...hist, { role: "assistant", content: txt }];
+    setScreen("insights");
+    screenRef.current = "insights";
+    setMsgs(prev => [...prev, { type: "divider", content: "🔍 Vaihe 3 — Tärkeimmät havainnot" }]);
+  }
+
+  async function runInsightsConfirm(userText) {
+    const hist = [...history(), { role: "user", content: userText }];
+    const r = await callAPI([
+      ...hist,
+      { role: "user", content: `Käyttäjä kommentoi havaintoja fokuksesta "${window.__focusType || ''}".
+
+Jos käyttäjä hyväksyy havainnot (ok/joo/hyvä/sovittu/kyllä tms.):
+- Lisää: ##INSIGHTS_CONFIRMED##
+- Kirjoita: "Hyvä! Siirrytään suunnittelemaan diarakennetta."
+- ÄLÄ ehdota rakennetta vielä — se tapahtuu seuraavassa viestissä automaattisesti
+
+Jos käyttäjä haluaa muuttaa havaintoja:
+- Päivitä lista käyttäjän palautteen mukaan
+- Näytä päivitetty lista
+- Kysy uudelleen vahvistus` }
+    ], docContext);
+
+    const txt = strip(r);
+    setMsgs(prev => [...prev, { role: "assistant", content: txt }]);
+
+    const confirmed = r.includes("##INSIGHTS_CONFIRMED##");
     const msgWords = userText.trim().toLowerCase().split(/\s+/);
-    const shortYes = hasFocus && msgWords.length <= 3 &&
-      ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep"]
+    const shortYes = msgWords.length <= 3 &&
+      ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","kyl"]
         .some(w => msgWords.includes(w));
 
-    if (observationsConfirmed || shortYes) {
-      await runInsightsAndStructure([...hist, { role: "assistant", content: responseText }]);
+    if (confirmed || shortYes) {
+      await runInsightsAndStructure([...hist, { role: "assistant", content: txt }]);
     }
   }
 
   async function runInsightsAndStructure(hist) {
     setScreen("structure");
-    setMsgs(prev => [...prev, { type: "divider", content: "🔍 Vaihe 2 — Analyysi & esitysrakenne" }]);
+    setScreen("structure");
+    screenRef.current = "structure";
+    setMsgs(prev => [...prev, { type: "divider", content: "📐 Vaihe 4 — Diarakenne" }]);
     const r = await callAPI([
       ...(hist || history()),
       { role: "user", content: `Tee kaksi asiaa SELKEÄSTI EROTELTUINA:
 
-Ehdota diarakenne SELKEÄNÄ LISTANA tässä muodossa (yksi dia per rivi):
-1. 🎯 Kansi — projektin nimi ja perustiedot
-2. 📊 Yhteenveto — ...
+Esityksen fokus: ${window.__focusType || "yleinen projektisuunnitelma"}
+
+Ehdota diarakenne SELKEÄNÄ LISTANA (yksi dia per rivi), suunniteltu tälle fokukselle:
+1. 🎯 Kansi — ...
+2. 📊 ...
 jne.
 
-Perustele LYHYESTI (1-2 lausetta) miksi rakenne sopii valitulle fokukselle.
+Perustele 1 lauseella miksi rakenne sopii fokukselle.
 Kysy: "Hyväksytkö tämän rakenteen, vai haluatko muuttaa jotain?"
 
 Esityksen fokus on: ${window.__focusType || "yleinen projektisuunnitelma"}
@@ -663,11 +675,12 @@ Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
           <div>
             <div style={{ color: G.white, fontWeight: 600, fontSize: 13 }}>Projektisuunnitelma-agentti</div>
             <div style={{ color: G.codeBlue, fontSize: 11 }}>
-              {screen === "interview"  ? "💬 Vaihe 1 — Haastattelu" :
-               screen === "focus"      ? ("🎯 Vaihe 2 — " + (focusType ? focusType : "Esityksen fokus")) :
-               screen === "structure"  ? "🔍 Vaihe 3 — Diarakenne" :
-               screen === "planning" && currentSlide ? "📄 Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon||"") + " " + currentSlide.label :
-               screen === "ready"     ? "✅ Kaikki diat sovittu" : ""}
+              {screen === "interview" ? "💬 Vaihe 1 — Haastattelu" :
+               screen === "focus"     ? "🎯 Vaihe 2 — Esityksen fokus" :
+               screen === "insights"  ? ("🔍 Vaihe 3 — Havainnot" + (focusType ? ": " + focusType : "")) :
+               screen === "structure" ? "📐 Vaihe 4 — Diarakenne" :
+               screen === "planning" && currentSlide ? "📄 Vaihe 5 — Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon||"") + " " + currentSlide.label :
+               screen === "ready"    ? "✅ Kaikki diat sovittu" : ""}
             </div>
           </div>
         </div>
@@ -687,6 +700,15 @@ Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
           )}
           {msgs.map((m, i) => {
             if (m.type === "divider") return <Divider key={i} text={m.content} />;
+            if (m.type === "action") return (
+              <div key={i} style={{ display:"flex", justifyContent:"center", margin:"16px 0" }}>
+                <button onClick={() => {
+                  if (m.action === "go_focus") runFocus(window.__interviewHist || history());
+                }} style={{ background: G.digitalBlue, color: G.white, border: "none", borderRadius: 10, padding: "12px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  {m.label}
+                </button>
+              </div>
+            );
             if (m.type === "download") return (
               <div key={i} style={{ display:"flex", justifyContent:"center", margin:"12px 0" }}>
                 <button onClick={() => downloadPPTX(slidesRef.current)} disabled={building}
@@ -729,7 +751,8 @@ Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
             <textarea value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
-              placeholder={screen === "interview" ? "Kerro projektistasi... (Enter lähettää · Shift+Enter = uusi rivi)" : screen === "focus"     ? "Valitse fokus tai kuvaile mitä haluat esitykseltä..." :
+              placeholder={screen === "interview" ? "Kerro projektistasi... (Enter lähettää · Shift+Enter = uusi rivi)" : screen === "focus"     ? "Valitse fokus (1-6) tai kuvaile omin sanoin..." :
+                screen === "insights"  ? "Vahvista havainnot tai muokkaa listaa..." :
                 screen === "structure" ? "Hyväksy rakenne tai ehdota muutoksia..." : "Kommentoi tai hyväksy ehdotus..."}
               style={{ flex: 1, background: G.light, outline: "none", resize: "vertical", border: "1.5px solid " + (input.length > 0 ? G.digitalBlue : G.silver), borderRadius: 11, padding: "10px 14px", fontSize: 14, fontFamily: "inherit", lineHeight: 1.6, color: G.deepBlue, minHeight: 80, maxHeight: 220 }} />
             <button onClick={doSend} disabled={!canSend}
