@@ -8,7 +8,7 @@ const G = {
   grey: "#8C9BAA", silver: "#D3D9DF", light: "#EEF1F3", bg: "#F4F6F9",
 };
 
-const TODAY = new Date().toLocaleDateString("fi-FI", { year:"numeric", month:"long", day:"numeric" });
+const _d = new Date(); const TODAY = _d.toLocaleDateString("fi-FI", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
 const SYSTEM = `Olet kokenut projektikonsultti Goforella. Kommunikoi AINA suomeksi.
 TÄNÄÄN ON: ${TODAY} — käytä tätä kun ehdotat päivämääriä tai arvioit aikatauluja.
 KRIITTISET SÄÄNNÖT:
@@ -54,7 +54,7 @@ function extractTag(text, tag) {
 
 function extractSlideData(text) {
   const out = {};
-  const re = /\[SLIDE_DATA:(\w+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
+  const re = /\[SLIDE_DATA:([\w-]+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
   let m;
   while ((m = re.exec(text))) {
     try { out[m[1]] = JSON.parse(m[2].trim()); } catch {}
@@ -64,7 +64,7 @@ function extractSlideData(text) {
 
 function strip(text) {
   return text
-    .replace(/\[SLIDE_DATA:\w+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
+    .replace(/\[SLIDE_DATA:[\w-]+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
     .replace(/\[STRUCTURE_DATA\][\s\S]*?\[\/STRUCTURE_DATA\]/g, "")
     .replace(/##[\w_]+##/g, "").trim();
 }
@@ -298,21 +298,19 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
 
-Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, käy tms.):
-- Kirjoita lyhyt vahvistus
+Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, käy, selvä tms.):
+- Kirjoita lyhyt vahvistus (1 lause)
 - Lisää PAKOLLISESTI: ##STRUCTURE_CONFIRMED##
-- Palauta rakenne: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
-- ÄLÄ aloita diojen sisältöä vielä
+- Palauta rakenne TÄSMÄLLEEN: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
+- ÄLÄ aloita diojen sisältöä tässä — se tapahtuu automaattisesti seuraavassa vaiheessa
 
 Jos käyttäjä haluaa muuttaa rakennetta: tee muutos, näytä uusi lista, pyydä vahvistus.
-Palauta aina päivitetty [STRUCTURE_DATA] kun rakennetta muutetaan.` }
+Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
-
-    // Päivitä pendingStructure jos uusi rakenne saatiin vastauksessa
     if (structure) window.__pendingStructure = structure;
 
     const rawStructure = window.__pendingStructure;
@@ -320,18 +318,16 @@ Palauta aina päivitetty [STRUCTURE_DATA] kun rakennetta muutetaan.` }
       : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
       : null;
 
-    // Tunnistus: tagi on luotettavin
     const tagConfirm = r.includes("##STRUCTURE_CONFIRMED##");
-    // Lyhyt hyväksyntä — vain jos viesti on korkeintaan 3 sanaa
+    // shortYes: max 3 sanaa, tunnistetut hyväksyntäsanat
     const msgWords = userText.trim().toLowerCase().split(/\s+/);
     const shortYes = msgWords.length <= 3 &&
-      ["ok", "joo", "kyllä", "selvä", "hyvä", "sopii", "käy", "juu", "yes", "jep"]
+      ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","kyl"]
         .some(w => msgWords.includes(w));
-    // Luonnollinen vahvistus AI:n vastauksessa
-    const positiveWords = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "sovittu", "edetään"];
-    const naturalConfirm = positiveWords.some(kw => c.toLowerCase().includes(kw));
+    const positiveInReply = ["vahvistettu","hyväksytty","aloitetaan","siirrytään","sovittu","edetään"]
+      .some(kw => c.toLowerCase().includes(kw));
 
-    const isConfirmed = (tagConfirm || shortYes || naturalConfirm)
+    const isConfirmed = (tagConfirm || shortYes || positiveInReply)
       && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
@@ -347,10 +343,8 @@ Palauta aina päivitetty [STRUCTURE_DATA] kun rakennetta muutetaan.` }
     }
   }
 
-  const proposingRef = useRef(false);
-
   async function proposeSlide(idx, hist, slidesArr) {
-    if (proposingRef.current) { console.log("proposeSlide blocked - already running"); return; }
+    if (proposingRef.current) { console.log("proposeSlide already running, skipping"); return; }
     proposingRef.current = true;
     try {
     const cur = slidesArr || slides;
