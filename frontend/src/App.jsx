@@ -79,18 +79,13 @@ function getPropose(slide) {
     "two-col":"kaksipalstainen — vasen ja oikea sarake omilla otsikoillaan",
   };
   return `KÄSITTELE NYT VAIN TÄMÄ YKSI DIA: "${slide.label}"
-ÄLÄ generoi muita dioja. VAIN tämä yksi.
+ÄLÄ generoi muita dioja. ÄLÄ näytä muiden diojen sisältöä. VAIN tämä yksi.
 
 Layout: ${layouts[slide.layout] || "vapaa rakenne"}
 
-Ehdota TIIVIS versio dian sisällöstä (oletuksena max 6-7 kohtaa, yksi idea per kohta).
-Jos aiheesta on paljon asiaa, tee silti ensin tiivis versio.
-
-Käyttäjä voi pyytää:
-- "lisää enemmän" → lisää yksityiskohtia nykyiseen diaan
-- "jaa kahdelle dialle" tai "tee tarkempi" → ehdota rakenne useammalle dialle ja lisää ne esitysrakenteeseen
-
-Kysy lopuksi: "Hyväksytkö tämän sisällön, vai haluatko lisää tai jakaa useammalle dialle?"`;
+Ehdota konkreettinen sisältö tälle yhdelle dialle projektin tietojen pohjalta.
+Perustele lyhyesti miksi tämä rakenne sopii.
+Kysy lopuksi: "Hyväksytkö tämän sisällön ja rakenteen, vai muutettavaa?"`;
 }
 
 function getConfirm(slide, isLast) {
@@ -105,18 +100,16 @@ function getConfirm(slide, isLast) {
   const schema = schemas[slide.layout] || '{"heading":"...","content":"..."}';
   return `Käsittele käyttäjän palaute "${slide.label}" -diaan.
 
-Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, sovittu tms.):
+Jos käyttäjä hyväksyy (ok, joo, hyvä, kyllä, tämä käy, sovittu tms.) TAI haluaa pieniä muutoksia:
+TEET NÄMÄ KAIKKI SAMASSA VASTAUKSESSA, JÄRJESTYKSESSÄ:
 1. [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
 2. Kerro 1 lauseella mitä tallensit
 3. ##SLIDE_DONE##
-${isLast ? '4. ##ALL_SLIDES_DONE##\n5. Kirjoita: Esitys on valmis ja PowerPoint generoidaan automaattisesti.' : ''}
+${isLast ? "4. ##ALL_SLIDES_DONE##\n5. Kirjoita: 'Esitys on valmis ja PowerPoint generoidaan automaattisesti.'" : ""}
 
-Jos käyttäjä pyytää jakamaan useammalle dialle tai enemmän sisältöä:
-- Ehdota ensin jako tai lisäsisältö, kysy vahvistus
-- Tallenna kukin osa erikseen: [SLIDE_DATA:${slide.id}_2]${schema}[/SLIDE_DATA]
-- ##SLIDE_DONE## vasta kun kaikki hyväksytty
-
-Jos käyttäjä haluaa muita muutoksia: tee muutos, näytä, pyydä vahvistus.`;}
+TÄRKEÄÄ: Kohdat 1, 2 ja 3 AINA kun käyttäjä hyväksyy. Ei poikkeuksia.
+Jos käyttäjä haluaa isoja muutoksia: tee muutos ensin, näytä uusi versio, pyydä vahvistus.`;
+}
 
 function Divider({ text }) {
   return (
@@ -304,48 +297,62 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
-[STRUCTURE_DATA][...][/STRUCTURE_DATA]
-Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
+
+Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, käy tms.):
+- Kirjoita lyhyt vahvistus
+- Lisää PAKOLLISESTI: ##STRUCTURE_CONFIRMED##
+- Palauta rakenne: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
+- ÄLÄ aloita diojen sisältöä vielä
+
+Jos käyttäjä haluaa muuttaa rakennetta: tee muutos, näytä uusi lista, pyydä vahvistus.
+Palauta aina päivitetty [STRUCTURE_DATA] kun rakennetta muutetaan.` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
-    const rawStructure = structure || window.__pendingStructure;
-    // Varmista että rakenne on aina taulukko
+    // Päivitä pendingStructure jos uusi rakenne saatiin vastauksessa
+    if (structure) window.__pendingStructure = structure;
+
+    const rawStructure = window.__pendingStructure;
     const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
       : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
       : null;
-    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
-    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
-      .some(kw => c.toLowerCase().includes(kw));
-    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
-    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
-      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
+
+    // Tunnistus: tagi on luotettavin
+    const tagConfirm = r.includes("##STRUCTURE_CONFIRMED##");
+    // Lyhyt hyväksyntä — vain jos viesti on korkeintaan 3 sanaa
+    const msgWords = userText.trim().toLowerCase().split(/\s+/);
+    const shortYes = msgWords.length <= 3 &&
+      ["ok", "joo", "kyllä", "selvä", "hyvä", "sopii", "käy", "juu", "yes", "jep"]
+        .some(w => msgWords.includes(w));
+    // Luonnollinen vahvistus AI:n vastauksessa
+    const positiveWords = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "sovittu", "edetään"];
+    const naturalConfirm = positiveWords.some(kw => c.toLowerCase().includes(kw));
+
+    const isConfirmed = (tagConfirm || shortYes || naturalConfirm)
+      && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
-      slidesRef.current = confirmedStructure;   // ← sync heti, ei odoteta useEffect:iä
+      slidesRef.current = confirmedStructure;
       setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
       setMsgs(prev => [...prev, { type: "divider", content: "✅ Vaihe 3 — Diojen sisällöntuotanto" }]);
       setScreen("planning");
-      screenRef.current = "planning";           // ← sync heti
+      screenRef.current = "planning";
       setSlideIdx(0);
-      slideIdxRef.current = 0;                  // ← sync heti
+      slideIdxRef.current = 0;
       await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
-    } else if (structure) {
-      window.__pendingStructure = structure;
     }
   }
 
   const proposingRef = useRef(false);
 
   async function proposeSlide(idx, hist, slidesArr) {
-    if (proposingRef.current) return; // estä tuplapyyntö
+    if (proposingRef.current) { console.log("proposeSlide blocked - already running"); return; }
     proposingRef.current = true;
+    try {
     const cur = slidesArr || slides;
     setSlideIdx(idx);
     setStatuses(prev => {
@@ -363,7 +370,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
       { role: "assistant", content: strip(r) }
     ]);
     setStatuses(prev => ({ ...prev, [slide.id]: "confirming" }));
-    proposingRef.current = false;
+    } finally { proposingRef.current = false; }
   }
 
   async function runPlanning(userText) {
