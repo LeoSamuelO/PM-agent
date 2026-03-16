@@ -2,9 +2,6 @@ import { useState, useRef, useEffect } from "react";
 
 const API = "https://pm-agent-avpl.onrender.com";
 
-// Herätä backend heti sivun latautuessa — estää cold start PPTX-latauksessa
-fetch(API + "/api/warmup", { headers: { "x-app-password": "AgenttiTestaus123" } }).catch(() => {});
-
 const G = {
   deepBlue: "#0C2340", digitalBlue: "#1B6CA8", codeBlue: "#5BA4CF",
   orange: "#E8521A", mint: "#3BBFAD", white: "#FFFFFF",
@@ -30,8 +27,9 @@ async function callAPI(messages, extraSystem, forceSearch) {
   // Tunnista automaattisesti jos viesti pyytää hakemaan tietoa
   const lastUserMsg = [...messages].reverse().find(m => m.role === "user")?.content || "";
   const useSearch = forceSearch || SEARCH_TRIGGERS.some(t => lastUserMsg.toLowerCase().includes(t));
+  const token = sessionStorage.getItem("pm_token") || "";
   const r = await fetch(API + "/api/chat", {
-    method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
+    method: "POST", headers: { "Content-Type": "application/json", "x-session-token": token },
     body: JSON.stringify({ messages, system, useSearch }),
   });
   const d = await r.json();
@@ -213,6 +211,26 @@ export default function App() {
     setBusy(false);
   }
 
+  async function doLogin() {
+    if (!pwInput) return;
+    try {
+      const r = await fetch(API + "/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwInput }),
+      });
+      const d = await r.json();
+      if (d.token) {
+        sessionStorage.setItem("pm_token", d.token);
+        setAuthed(true);
+      } else {
+        setPwError(true);
+      }
+    } catch {
+      setPwError(true);
+    }
+  }
+
   function startInterview() {
     setScreen("interview");
     setMsgs([
@@ -389,7 +407,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
         const base64 = btoa(binary);
         const r = await fetch(API + "/api/extract-file", {
-          method: "POST", headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
+          method: "POST", headers: { "Content-Type": "application/json", "x-session-token": sessionStorage.getItem("pm_token") || "" },
           body: JSON.stringify({ base64, mimeType, fileName: f.name }),
         });
         const d = await r.json();
@@ -428,8 +446,7 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     setBuilding(true);
     try {
       const r = await fetch(API + "/api/build-pptx", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-app-password": "AgenttiTestaus123" },
+        method: "POST", headers: { "Content-Type": "application/json", "x-session-token": sessionStorage.getItem("pm_token") || "" },
         body: JSON.stringify({ slideData: collectedRef.current, slideStructure: slidesArr || slidesRef.current }),
       });
       if (!r.ok) {
@@ -443,7 +460,6 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
     } catch (e) { alert("Virhe: " + e.message); }
     setBuilding(false);
   }
-
 
   const canSend = !busy && (input.trim().length > 0 || attachments.length > 0);
   const doneCount = Object.values(statuses).filter(s => s === "done").length;
@@ -460,12 +476,12 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
           type="password"
           value={pwInput}
           onChange={e => { setPwInput(e.target.value); setPwError(false); }}
-          onKeyDown={e => { if (e.key === "Enter") { if (pwInput === "AgenttiTestaus123") setAuthed(true); else setPwError(true); }}}
+          onKeyDown={e => { if (e.key === "Enter") doLogin(); }}
           placeholder="Salasana"
           style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1.5px solid " + (pwError ? G.orange : G.grey), background: "rgba(255,255,255,0.08)", color: G.white, fontSize: 15, outline: "none", boxSizing: "border-box", marginBottom: 8 }}
         />
         {pwError && <div style={{ color: G.orange, fontSize: 13, marginBottom: 8 }}>Väärä salasana</div>}
-        <button onClick={() => { if (pwInput === "AgenttiTestaus123") setAuthed(true); else setPwError(true); }}
+        <button onClick={doLogin}
           style={{ width: "100%", background: G.orange, color: G.white, border: "none", borderRadius: 10, padding: "12px 0", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
           Kirjaudu →
         </button>
@@ -500,12 +516,17 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
         </button>
         <button onClick={async () => {
           try {
-            // Testi suoraan selaimessa — ei backendia tarvita
-            const testData = { cover: { title: "Testiprojekti", tagline: "Testi toimii!", meta: "Gofore · 2026", projectLead: "Leo" } };
-            const testStructure = [{ id: "cover", label: "Kansi", icon: "🎯", layout: "title" }];
-            // buildPPTX ei ole saatavilla tässä scopessa, tehdään inline testi
-            alert("PPTX-testi: aloita haastattelu ja lataa oikean session kautta ⬇-napista");
-          } catch(e) { alert("Virhe: " + e.message); }
+            const testData = {
+              slideData: { cover: { title: "Testiprojekti", tagline: "Testi toimii!", meta: "Gofore · 2025", projectLead: "Leo" } },
+              slideStructure: [{ id: "cover", label: "Kansi", icon: "🎯", layout: "title" }]
+            };
+            const r = await fetch(API + "/api/build-pptx", { method: "POST", headers: { "Content-Type": "application/json", "x-session-token": sessionStorage.getItem("pm_token") || "" }, body: JSON.stringify(testData) });
+            if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Virhe: " + (e.error || r.status)); return; }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            Object.assign(document.createElement("a"), { href: url, download: "testi.pptx" }).click();
+            URL.revokeObjectURL(url);
+          } catch(e) { alert("Yhteysvirhe: " + e.message); }
         }} style={{ width: "100%", marginTop: 8, background: "transparent", color: G.codeBlue, border: "1px solid " + G.codeBlue, borderRadius: 12, padding: "10px 0", fontSize: 13, cursor: "pointer" }}>
           🧪 Testaa PPTX-lataus
         </button>
