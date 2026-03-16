@@ -156,8 +156,7 @@ function Pill({ slide, status }) {
 
 export default function App() {
   const [screen, setScreen]           = useState("intro");
-  // Palauta kirjautumistila sivun päivityksen jälkeen
-  const [authed, setAuthed]             = useState(!!localStorage.getItem("pm_token"));
+  const [authed, setAuthed]             = useState(false);
   const [pwInput, setPwInput]           = useState("");
   const [pwError, setPwError]           = useState(false);
   const [msgs, setMsgs]               = useState([]);
@@ -179,6 +178,15 @@ export default function App() {
   const slidesRef     = useRef([]);      // tuore slides runPlanning:lle
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
+
+  // Validoi token backendistä sivun latautuessa
+  useEffect(() => {
+    const token = localStorage.getItem("pm_token");
+    if (!token) return;
+    fetch(API + "/api/warmup", { headers: { "x-session-token": token } })
+      .then(r => { if (r.ok) setAuthed(true); else localStorage.removeItem("pm_token"); })
+      .catch(() => {});
+  }, []);
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { slideIdxRef.current = slideIdx; }, [slideIdx]);
   useEffect(() => { slidesRef.current = slides; }, [slides]);
