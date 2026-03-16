@@ -170,6 +170,7 @@ export default function App() {
   const [building, setBuilding]       = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [docContext, setDocContext]   = useState("");
+  const [focusType, setFocusType]     = useState(""); // käyttäjän valitsema esityksen fokus
   const [dragOver, setDragOver]       = useState(false);
   const bottom = useRef();
   const fileInput = useRef();
@@ -177,6 +178,7 @@ export default function App() {
   const screenRef     = useRef("intro"); // tuore screen doSend:lle (stale closure fix)
   const slideIdxRef   = useRef(0);       // tuore slideIdx runPlanning:lle
   const slidesRef     = useRef([]);      // tuore slides runPlanning:lle
+  const proposingRef  = useRef(false);   // estää proposeSlide tuplapyynnön
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, busy]);
   useEffect(() => { screenRef.current = screen; }, [screen]);
@@ -209,6 +211,7 @@ export default function App() {
     try {
       const s = screenRef.current; // ← aina tuore arvo, ei stale closure
       if (s === "interview")      await runInterview(apiText, newCtx);
+      else if (s === "focus")     await runFocusConfirm(apiText);
       else if (s === "structure") await runStructureConfirm(apiText);
       else if (s === "planning")  await runPlanning(apiText);
     } catch (e) {
@@ -241,7 +244,7 @@ export default function App() {
     setScreen("interview");
     setMsgs([
       { type: "divider", content: "💬 Vaihe 1 — Haastattelu" },
-      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nKun olet kertonut riittävästi, analysoin tilanteen, nostan tärkeimmät havainnot esiin ja ehdotan esityksen rakennetta yhdessä kanssasi." }
+      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nEtenen kanssasi kolmessa vaiheessa:\n1️⃣ Kerätään projektitiedot\n2️⃣ Valitaan esityksen fokus ja vahvistetaan tärkeimmät havainnot\n3️⃣ Rakennetaan diat yhdessä" }
     ]);
   }
 
@@ -258,9 +261,69 @@ export default function App() {
     const lastSentence = c.trim().split("\n").filter(l => l.trim()).pop() || "";
     const stillAsking = lastSentence.includes("?");
     if (r.includes("##READY_TO_PLAN##") && !stillAsking) {
-      await runInsightsAndStructure([...hist, { role: "assistant", content: c }]);
+      await runFocus([...hist, { role: "assistant", content: c }]);
     }
     if (ctx && ctx !== docContext) setDocContext(ctx);
+  }
+
+
+  async function runFocus(hist) {
+    setScreen("focus");
+    screenRef.current = "focus";
+    setMsgs(prev => [...prev, { type: "divider", content: "🎯 Vaihe 2 — Esityksen fokus" }]);
+    const r = await callAPI([
+      ...(hist || history()),
+      { role: "user", content: `Projektin perustiedot on kerätty. Nyt selvitetään mitä tällä esityksellä halutaan saavuttaa.
+
+Esittele lyhyesti (2-3 lausetta) mikä on projektin tilanne ja kerro sitten:
+"Mihin tarkoitukseen tämä esitys tehdään? Valitse sopivin tai kuvaile oma:"
+
+1. 📋 Yleinen projektisuunnitelma — kokonaiskuva projektin etenemisestä
+2. ⚠️ Riskianalyysi — fokus riskeihin, riippuvuuksiin ja mitigointiin
+3. 📅 Aikataulukatsaus — fokus aikatauluun, milestonehin ja kriittiseen polkuun
+4. 🚀 Kickoff-materiaali — esitys projektin käynnistyskokoukseen
+5. 👥 Sidosryhmäraportti — tilannekatsaus johdolle tai asiakkaalle
+6. 🔍 Joku muu fokus — käyttäjä kertoo itse
+
+Odota käyttäjän vastausta ennen kuin jatkat.` }
+    ], docContext);
+    setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
+    if (hist) window.__focusHist = hist;
+  }
+
+  async function runFocusConfirm(userText) {
+    const hist = [...history(), { role: "user", content: userText }];
+    const r = await callAPI([
+      ...hist,
+      { role: "user", content: `Käyttäjä valitsi esityksen fokuksen: "${userText}"
+
+Tee seuraavat asiat:
+1. Vahvista valittu fokus lyhyesti (1 lause)
+2. Listaa 3-5 tärkeintä projektiin liittyvää havaintoa JUURI tämän fokuksen näkökulmasta
+3. Kysy: "Oletko samaa mieltä näistä havainnoista, vai haluatko nostaa jonkin muun asian esiin?"
+4. Lisää: ##FOCUS_CONFIRMED## ja tallenna fokus: [FOCUS_TYPE]${userText}[/FOCUS_TYPE]
+
+Älä vielä ehdota diarakennetta.` }
+    ], docContext);
+
+    const c = strip(r);
+    const focusMatch = r.match(/\[FOCUS_TYPE\]([\s\S]*?)\[\/FOCUS_TYPE\]/);
+    if (focusMatch) {
+      setFocusType(focusMatch[1].trim());
+      window.__focusType = focusMatch[1].trim();
+    }
+    setMsgs(prev => [...prev, { role: "assistant", content: c }]);
+
+    // Jos käyttäjä vahvistaa havainnot, siirrytään rakenne-vaiheeseen
+    const confirmed = r.includes("##FOCUS_CONFIRMED##");
+    const msgWords = userText.trim().toLowerCase().split(/\s+/);
+    const shortYes = msgWords.length <= 3 &&
+      ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep"]
+        .some(w => msgWords.includes(w));
+
+    if (confirmed || shortYes) {
+      await runInsightsAndStructure([...hist, { role: "assistant", content: c }]);
+    }
   }
 
   async function runInsightsAndStructure(hist) {
@@ -282,6 +345,10 @@ jne.
 Perustele lyhyesti miksi juuri tämä rakenne sopii tälle projektille.
 
 Kysy sitten: "Hyväksytkö tämän rakenteen, vai haluatko lisätä/poistaa/muuttaa jotain diaa?"
+
+Esityksen fokus on: ${window.__focusType || "yleinen projektisuunnitelma"}
+
+Ehdota diarakenne JUURI tälle fokukselle sopivaksi. Esim. riskifokuksessa enemmän riskidioja, kickoff-fokuksessa konkreettiset seuraavat askeleet jne.
 
 Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gantt|cards|two-col):
 [STRUCTURE_DATA][{"id":"cover","label":"Kansi","icon":"🎯","layout":"title","reason":"..."}][/STRUCTURE_DATA]` }
@@ -586,10 +653,11 @@ Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
           <div>
             <div style={{ color: G.white, fontWeight: 600, fontSize: 13 }}>Projektisuunnitelma-agentti</div>
             <div style={{ color: G.codeBlue, fontSize: 11 }}>
-              {screen === "interview"  ? "💬 Haastattelu" :
-               screen === "structure"  ? "🔍 Analyysi & rakenne" :
-               screen === "planning" && currentSlide ? (currentSlide.icon || "📄") + " " + currentSlide.label :
-               screen === "ready" ? "✅ Kaikki diat sovittu" : ""}
+              {screen === "interview"  ? "💬 Vaihe 1 — Haastattelu" :
+               screen === "focus"      ? "🎯 Vaihe 2 — Esityksen fokus" :
+               screen === "structure"  ? "🔍 Vaihe 3 — Diarakenne" :
+               screen === "planning" && currentSlide ? "📄 Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon||"") + " " + currentSlide.label :
+               screen === "ready"     ? "✅ Kaikki diat sovittu" : ""}
             </div>
           </div>
         </div>
@@ -651,7 +719,8 @@ Palauta aina päivitetty [STRUCTURE_DATA] muutosten jälkeen.` }
             <textarea value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
-              placeholder={screen === "interview" ? "Kerro projektistasi... (Enter lähettää · Shift+Enter = uusi rivi)" : screen === "structure" ? "Hyväksy rakenne tai ehdota muutoksia..." : "Kommentoi tai hyväksy ehdotus..."}
+              placeholder={screen === "interview" ? "Kerro projektistasi... (Enter lähettää · Shift+Enter = uusi rivi)" : screen === "focus"     ? "Valitse fokus tai kuvaile mitä haluat esitykseltä..." :
+                screen === "structure" ? "Hyväksy rakenne tai ehdota muutoksia..." : "Kommentoi tai hyväksy ehdotus..."}
               style={{ flex: 1, background: G.light, outline: "none", resize: "vertical", border: "1.5px solid " + (input.length > 0 ? G.digitalBlue : G.silver), borderRadius: 11, padding: "10px 14px", fontSize: 14, fontFamily: "inherit", lineHeight: 1.6, color: G.deepBlue, minHeight: 80, maxHeight: 220 }} />
             <button onClick={doSend} disabled={!canSend}
               style={{ width: 38, height: 38, flexShrink: 0, alignSelf: "flex-end", background: canSend ? G.orange : G.silver, color: G.white, border: "none", borderRadius: "50%", fontSize: 18, cursor: canSend ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}>↑</button>
