@@ -54,7 +54,7 @@ function extractTag(text, tag) {
 
 function extractSlideData(text) {
   const out = {};
-  const re = /\[SLIDE_DATA:(\w+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
+  const re = /\[SLIDE_DATA:([\w-]+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
   let m;
   while ((m = re.exec(text))) {
     try { out[m[1]] = JSON.parse(m[2].trim()); } catch {}
@@ -64,7 +64,7 @@ function extractSlideData(text) {
 
 function strip(text) {
   return text
-    .replace(/\[SLIDE_DATA:\w+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
+    .replace(/\[SLIDE_DATA:[\w-]+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
     .replace(/\[STRUCTURE_DATA\][\s\S]*?\[\/STRUCTURE_DATA\]/g, "")
     .replace(/##[\w_]+##/g, "").trim();
 }
@@ -297,31 +297,27 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-
-Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, tehdään, tämä käy tms.):
-- Kirjoita lyhyt vahvistus
-- Lisää PAKOLLISESTI: ##STRUCTURE_CONFIRMED##
-- Palauta rakenne: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
-- ÄLÄ aloita diojen sisältöä vielä — se tapahtuu seuraavassa vaiheessa automaattisesti
-
-Jos käyttäjä haluaa muuttaa: tee muutos ja pyydä vahvistus. Palauta aina päivitetty [STRUCTURE_DATA].` }
+Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
+[STRUCTURE_DATA][...][/STRUCTURE_DATA]
+Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
+    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
     const rawStructure = structure || window.__pendingStructure;
+    // Varmista että rakenne on aina taulukko
     const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
       : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
       : null;
-
-    // Tunnistus: tagi on ensisijainen
-    const tagConfirm = r.includes("##STRUCTURE_CONFIRMED##");
-    // Fallback: rakenne löytyy + positiivinen vastaus (ei enää kysymysmerkki-rajoitusta)
-    const positiveWords = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "sovittu", "edetään", "käydään läpi"];
-    const naturalConfirm = positiveWords.some(kw => c.toLowerCase().includes(kw));
-    const isConfirmed = (tagConfirm || naturalConfirm) && confirmedStructure && confirmedStructure.length > 0;
+    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
+    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
+      .some(kw => c.toLowerCase().includes(kw));
+    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
+    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
+      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
@@ -387,8 +383,8 @@ Jos käyttäjä haluaa muuttaa: tee muutos ja pyydä vahvistus. Palauta aina pä
     const positiveReply = positiveWords.some(kw => c.toLowerCase().includes(kw));
     // Fallback 1: data tallennettu + positiivinen vastaus ilman kysymystä
     const fallback1 = hasData && positiveReply && noQuestion;
-    // Fallback 2: viimeinen dia + positiivinen vastaus ilman kysymystä (vaikka ei dataa)
-    const fallback2 = isLast && positiveReply && noQuestion;
+    // Fallback 2: viimeinen dia + data tallennettu + positiivinen vastaus
+    const fallback2 = isLast && hasData && noQuestion;
     const slideDone = tagDone || fallback1 || fallback2;
     const allDone   = r.includes("##ALL_SLIDES_DONE##") || (slideDone && isLast);
 
