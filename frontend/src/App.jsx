@@ -297,27 +297,31 @@ Tallenna rakenne MYÖS koneellisessa muodossa (layouts: title|bullets|table|gant
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
-[STRUCTURE_DATA][...][/STRUCTURE_DATA]
-Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
+
+Jos käyttäjä hyväksyy rakenteen (ok, joo, hyvä, kyllä, sovittu, tehdään, tämä käy tms.):
+- Kirjoita lyhyt vahvistus
+- Lisää PAKOLLISESTI: ##STRUCTURE_CONFIRMED##
+- Palauta rakenne: [STRUCTURE_DATA][{"id":"...","label":"...","icon":"...","layout":"title|bullets|table|gantt|cards|two-col"},...][/STRUCTURE_DATA]
+- ÄLÄ aloita diojen sisältöä vielä — se tapahtuu seuraavassa vaiheessa automaattisesti
+
+Jos käyttäjä haluaa muuttaa: tee muutos ja pyydä vahvistus. Palauta aina päivitetty [STRUCTURE_DATA].` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
     const c = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: c }]);
 
-    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
     const rawStructure = structure || window.__pendingStructure;
-    // Varmista että rakenne on aina taulukko
     const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
       : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
       : null;
-    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
-    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
-      .some(kw => c.toLowerCase().includes(kw));
-    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
-    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
-      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
+
+    // Tunnistus: tagi on ensisijainen
+    const tagConfirm = r.includes("##STRUCTURE_CONFIRMED##");
+    // Fallback: rakenne löytyy + positiivinen vastaus (ei enää kysymysmerkki-rajoitusta)
+    const positiveWords = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "sovittu", "edetään", "käydään läpi"];
+    const naturalConfirm = positiveWords.some(kw => c.toLowerCase().includes(kw));
+    const isConfirmed = (tagConfirm || naturalConfirm) && confirmedStructure && confirmedStructure.length > 0;
 
     if (isConfirmed) {
       setSlides(confirmedStructure);
