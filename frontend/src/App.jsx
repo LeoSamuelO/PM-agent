@@ -171,6 +171,7 @@ export default function App() {
   const [building, setBuilding]       = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [docContext, setDocContext]   = useState("");
+  const [focusType, setFocusType]     = useState("");
   const [dragOver, setDragOver]       = useState(false);
   const bottom = useRef();
   const fileInput = useRef();
