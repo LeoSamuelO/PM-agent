@@ -145,6 +145,7 @@ export default function App() {
   const slidesRef=useRef([]); const focusTypeRef=useRef("");
   const pendingStructRef=useRef(null); const pendingSlideRef=useRef(null);
   const docContextRef=useRef("");
+  const lastProposalRef=useRef({}); // {slideId: "AI:n ehdotusteksti"} — käytetään fallbackissa
 
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,busy]);
 
@@ -232,25 +233,27 @@ TÄRKEÄ: ÄLÄ ehdota diarakennetta. ÄLÄ listaa dioja. Pysyt havainto-vaihees
   }
 
   // ═══ VAIHE 4: RAKENNE ═══
-  // YKSI selkeä kutsu — AI antaa 2 vaihtoehtoa heti, käyttäjä valitsee
   async function runStructureAsk(hist){
     setScreenSync("structure");
     addDivider("📐 Vaihe 4 — Diarakenne");
     const r=await callAPI([...(hist||history()),{role:"user",content:
       `[JÄRJESTELMÄOHJE] Fokus: "${focusTypeRef.current}"
-Ehdota KAKSI diarakennevaihtoehtoa:
-**Vaihtoehto A: Tiivis (3-5 diaa)** — yksi dia per rivi, numero + emoji + nimi + layout
-**Vaihtoehto B: Kattava (6-8 diaa)** — yksi dia per rivi, numero + emoji + nimi + layout
+Ehdota KAKSI diarakennevaihtoehtoa. Ensimmäinen dia on AINA kansi (layout: title).
+
+**Vaihtoehto A: Tiivis (4-6 diaa)**
+1. 🎯 Kansi - title
+2. ...jne
+
+**Vaihtoehto B: Kattava (7-9 diaa)**
+1. 🎯 Kansi - title
+2. ...jne
 
 Layoutit: title, bullets, table, gantt, cards, two-col
-ÄLÄ sisällytä kansidiaa — se lisätään automaattisesti.
-
 Kysy: "Kumpi sopii paremmin vai haluatko yhdistelmän?"
 
 TÄRKEÄ: Tallenna vaihtoehto A oletuksena:
-[STRUCTURE_DATA][{"id":"dia_1","label":"Nimi","icon":"📋","layout":"bullets"},...][/STRUCTURE_DATA]
-Joka dialla: id (pieniä_kirjaimia), label, icon, layout.
-ÄLÄ laita kansi-diaa STRUCTURE_DATA:an.`}],phaseSystem());
+[STRUCTURE_DATA][{"id":"kansi","label":"Kansi","icon":"🎯","layout":"title"},{"id":"dia_2","label":"...","icon":"📋","layout":"bullets"},...][/STRUCTURE_DATA]
+Joka dialla: id (pieniä_kirjaimia), label, icon, layout. Kansi AINA ensimmäisenä.`}],phaseSystem());
     const structure=extractTag(r,"STRUCTURE_DATA");
     if(structure&&Array.isArray(structure)&&structure.length>0) pendingStructRef.current=structure;
     else{const fb=tryParseStructure(r);if(fb) pendingStructRef.current=fb;}
@@ -276,8 +279,9 @@ Joka dialla: id (pieniä_kirjaimia), label, icon, layout.
   }
 
   function ensureKansi(structure) {
-    if (!structure || structure.length === 0) return structure;
+    if (!structure || structure.length === 0) return [{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}];
     if (structure[0].layout === "title") return structure;
+    // Safety net — lisää kansi jos AI unohti sen
     return [{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}, ...structure];
   }
 
@@ -294,15 +298,13 @@ Joka dialla: id (pieniä_kirjaimia), label, icon, layout.
       addMsg("assistant","Rakennetta ei tallennettu. Generoidaan uudelleen...");
       await runStructureAsk(history()); return;
     }
-    // Käyttäjä valitsee/muokkaa — YKSI API-kutsu
     const hist=[...history(),{role:"user",content:userText}];
     const r=await callAPI([...hist,{role:"user",content:
       `[JÄRJESTELMÄOHJE] Käyttäjä kommentoi/valitsi rakenteen: "${userText}"
-Tee pyydetyt muutokset ja näytä LOPULLINEN rakenne (yksi dia per rivi).
+Tee pyydetyt muutokset ja näytä LOPULLINEN rakenne. Kansi (title) AINA ensimmäisenä.
 Kysy: "Hyväksytkö tämän rakenteen?"
-ÄLÄ kysy enää montako diaa tarvitaan — käyttäjä kertoi jo.
-Tallenna: [STRUCTURE_DATA][...JSON...][/STRUCTURE_DATA]
-ÄLÄ laita kansi-diaa mukaan.`}],phaseSystem());
+ÄLÄ kysy enää montako diaa — käyttäjä kertoi jo.
+Tallenna: [STRUCTURE_DATA][...JSON, kansi mukana...][/STRUCTURE_DATA]`}],phaseSystem());
     const structure=extractTag(r,"STRUCTURE_DATA");
     if(structure&&Array.isArray(structure)&&structure.length>0) pendingStructRef.current=structure;
     else{const fb=tryParseStructure(r);if(fb) pendingStructRef.current=fb;}
@@ -337,9 +339,11 @@ Kysy: "Sopiiko tämä kansidian sisältö?"
 Tallenna AINA: [SLIDE_DATA:${slide.id}]{"title":"...","tagline":"...","meta":"...","projectLead":"..."}[/SLIDE_DATA]`}],phaseSystem());
         const extracted=extractSlideData(r);
         pendingSlideRef.current=extracted[slide.id]||null;
-        if(!pendingSlideRef.current) pendingSlideRef.current=await genSlideData(slide,strip(r));
+        const cleanText=strip(r);
+        lastProposalRef.current[slide.id]=cleanText;
+        if(!pendingSlideRef.current) pendingSlideRef.current=await genSlideData(slide,cleanText);
         addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
-        addMsg("assistant",strip(r));
+        addMsg("assistant",cleanText);
         setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
         return;
       }
@@ -353,8 +357,9 @@ KRIITTINEN — tallenna ehdotus AINA:
 Täytä KAIKKI kentät projektin OIKEILLA tiedoilla. Vain tämä dia.`}],phaseSystem());
       const extracted=extractSlideData(r);
       pendingSlideRef.current=extracted[slide.id]||null;
-      // Fallback: generoi data keskustelun perusteella
-      if(!pendingSlideRef.current) pendingSlideRef.current=await genSlideData(slide,strip(r));
+      const cleanText=strip(r);
+      lastProposalRef.current[slide.id]=cleanText;
+      if(!pendingSlideRef.current) pendingSlideRef.current=await genSlideData(slide,cleanText);
       addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
       addMsg("assistant",strip(r));
       setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
@@ -371,8 +376,9 @@ Täytä KAIKKI kentät projektin OIKEILLA tiedoilla. Vain tämä dia.`}],phaseSy
     if(isShortYes(userText)||isCancel){
       let slideData=pendingSlideRef.current||collectedRef.current[slide.id];
       if(!slideData){
-        const lastAi=[...msgs].reverse().find(m=>m.role==="assistant")?.content||"";
-        slideData=await genSlideData(slide,lastAi);
+        // Käytä TÄSMÄLLEEN sitä tekstiä jonka AI ehdotti ja käyttäjä hyväksyi
+        const proposalText=lastProposalRef.current[slide.id]||"";
+        slideData=await genSlideData(slide,proposalText);
       }
       if(slideData){const nc={...collectedRef.current,[slide.id]:slideData};collectedRef.current=nc;setCollected(nc);}
       pendingSlideRef.current=null;
@@ -405,17 +411,30 @@ Käyttäjä: "${userText}". Muokkaa, näytä uusi versio, kysy hyväksyntä.
 Tallenna: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]`}],phaseSystem());
     const extracted=extractSlideData(r);
     if(extracted[slide.id]) pendingSlideRef.current=extracted[slide.id];
-    addMsg("assistant",strip(r));
+    const cleanText=strip(r);
+    lastProposalRef.current[slide.id]=cleanText; // Päivitä ehdotus muokkauksen jälkeen
+    addMsg("assistant",cleanText);
   }
 
   async function genSlideData(slide, discussedContent){
     const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"...","bullets":["..."]}';
     try{
-      const ctx = discussedContent ? "\n\nSOVITTU SISÄLTÖ:\n"+discussedContent.substring(0,2000) : "";
       const r=await callAPI([...history(),{role:"user",content:
-        `[JÄRJESTELMÄOHJE] Generoi "${slide.label}" (${slide.layout}) JSON:
-${schema}${ctx}
-Vastaa VAIN JSON. Ei selityksiä. Käytä TARKALLEEN yllä sovittua sisältöä.`}],phaseSystem());
+        `[JÄRJESTELMÄOHJE] Muunna alla oleva SOVITTU SISÄLTÖ JSON-muotoon.
+
+DIA: "${slide.label}" (layout: ${slide.layout})
+JSON-SKEEMA: ${schema}
+
+SOVITTU SISÄLTÖ JOKA PITÄÄ MUUNTAA:
+---
+${(discussedContent||"").substring(0,2000)}
+---
+
+KRIITTISET SÄÄNNÖT:
+1. Vastaa VAIN JSON-objektilla. Ei selityksiä, ei muuta tekstiä.
+2. ÄLÄ keksi uutta sisältöä. Käytä VAIN yllä olevan sovitun sisällön tietoja.
+3. Jokainen bullet/rivi/kortti yllä olevasta sisällöstä PITÄÄ olla mukana JSON:ssa.
+4. ÄLÄ muuta sanamuotoja, ÄLÄ tiivistä, ÄLÄ jätä mitään pois.`}],phaseSystem());
       const m=r.match(/\{[\s\S]*\}/);
       if(m) return JSON.parse(m[0]);
     }catch(e){console.error("genSlideData:",e);}
