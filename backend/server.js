@@ -5,7 +5,6 @@ const Anthropic = require("@anthropic-ai/sdk");
 const pptxgen = require("pptxgenjs");
 const path = require("path");
 const fs = require("fs");
-// pdf-parse removed — using Claude API natively instead
 
 const app = express();
 app.use(cors());
@@ -24,7 +23,7 @@ app.use((req, res, next) => {
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Session-tokenin hallinta ──────────────────────────────────────
-const sessions = new Map(); // token → expiry
+const sessions = new Map();
 
 function generateToken() {
   return require("crypto").randomBytes(32).toString("hex");
@@ -37,33 +36,30 @@ function isValidToken(token) {
   return true;
 }
 
-// ── Login-endpoint — tarkistaa salasanan, palauttaa tokenin ──────
+// ── Login ─────────────────────────────────────────────────────────
 app.post("/api/login", (req, res) => {
   const { password } = req.body;
   if (password !== PASSWORD) return res.status(401).json({ error: "Väärä salasana" });
   const token = generateToken();
-  sessions.set(token, Date.now() + 8 * 60 * 60 * 1000); // 8h
+  sessions.set(token, Date.now() + 8 * 60 * 60 * 1000);
   res.json({ token });
 });
 
-// ── Terveystarkistus ──────────────────────────────────────────────
+// ── Health ────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
   res.json({ status: "ok", message: "Gofore agentti toimii!" });
 });
 
-// ── File extract endpoint — uses Claude API to read any file ────────
+// ── File extract ──────────────────────────────────────────────────
 app.post("/api/extract-file", async (req, res) => {
   const { base64, mimeType, fileName } = req.body;
   if (!base64 || !mimeType) return res.status(400).json({ error: "base64/mimeType puuttuu" });
   try {
-    // Claude can natively read PDFs and images
     const isImage = mimeType.startsWith("image/");
     const isPdf = mimeType === "application/pdf";
-
     if (!isImage && !isPdf) {
       return res.status(400).json({ error: "Tuetut tiedostotyypit: PDF ja kuvat" });
     }
-
     const contentBlock = isPdf
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
       : { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } };
@@ -88,11 +84,9 @@ app.post("/api/extract-file", async (req, res) => {
   }
 });
 
-
-// ── Chat-endpoint ─────────────────────────────────────────────────
+// ── Chat ──────────────────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   const { messages, system, useSearch } = req.body;
-
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "messages puuttuu" });
   }
@@ -101,18 +95,16 @@ app.post("/api/chat", async (req, res) => {
     const params = {
       model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      system: system || "Olet kokenut projektikonsultti. Kommunikoi aina suomeksi. Ole ytimekäs ja käytännönläheinen.",
+      system: system || "Olet kokenut projektikonsultti. Kommunikoi aina suomeksi.",
       messages,
     };
 
-    // Lisää web search jos pyydetty tai viesti vaikuttaa hakevan tietoa netistä
     if (useSearch) {
       params.tools = [{ type: "web_search_20250305", name: "web_search" }];
     }
 
     const response = await client.messages.create(params);
 
-    // Kerää kaikki tekstiblokit yhteen (web search voi tuottaa useita)
     const text = response.content
       .filter(b => b.type === "text")
       .map(b => b.text)
@@ -125,12 +117,29 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// ── PPTX-endpoint ─────────────────────────────────────────────────
+// ── PPTX ──────────────────────────────────────────────────────────
 app.post("/api/build-pptx", async (req, res) => {
   const { slideData, slideStructure } = req.body;
   if (!slideData) return res.status(400).json({ error: "slideData puuttuu" });
+  if (!slideStructure || !Array.isArray(slideStructure) || slideStructure.length === 0) {
+    return res.status(400).json({ error: "slideStructure puuttuu tai on tyhjä" });
+  }
+
+  // Validoi: varmista että jokaisella dialla on dataa
+  const warnings = [];
+  for (const sd of slideStructure) {
+    if (!slideData[sd.id]) {
+      warnings.push(`Dia "${sd.label}" (${sd.id}) — ei dataa, käytetään oletusarvoja`);
+      // Anna oletusarvot tyhjille dioille
+      slideData[sd.id] = getDefaultSlideData(sd);
+    }
+  }
+  if (warnings.length > 0) {
+    console.warn("PPTX-varoitukset:", warnings);
+  }
+
   try {
-    const filePath = await buildPPTX(slideData, slideStructure || []);
+    const filePath = await buildPPTX(slideData, slideStructure);
     res.download(filePath, "projektisuunnitelma.pptx", (err) => {
       if (err) console.error("Latausvirhe:", err);
       fs.unlink(filePath, () => {});
@@ -140,6 +149,26 @@ app.post("/api/build-pptx", async (req, res) => {
     res.status(500).json({ error: "PPTX-generointi epäonnistui: " + err.message });
   }
 });
+
+/** Oletusarvot tyhjille dioille, jotta ne eivät ole aivan tyhjiä */
+function getDefaultSlideData(slideDef) {
+  switch (slideDef.layout) {
+    case "title":
+      return { title: slideDef.label || "Projektisuunnitelma", tagline: "", meta: "" };
+    case "bullets":
+      return { heading: slideDef.label || "", bullets: ["(Sisältö puuttuu)"] };
+    case "table":
+      return { heading: slideDef.label || "", columns: ["Tieto"], rows: [["(Sisältö puuttuu)"]] };
+    case "cards":
+      return { heading: slideDef.label || "", cards: [{ icon: "📌", title: "(Sisältö puuttuu)", desc: "", level: "medium" }] };
+    case "two-col":
+      return { heading: slideDef.label || "", left: { title: "", items: ["(Sisältö puuttuu)"] }, right: { title: "", items: [] } };
+    case "gantt":
+      return { heading: slideDef.label || "Aikataulu", totalWeeks: 8, phases: [{ name: "(Vaihe puuttuu)", start: 1, end: 4, critical: false }] };
+    default:
+      return { heading: slideDef.label || "", bullets: ["(Sisältö puuttuu)"] };
+  }
+}
 
 // ── PPTX-rakentaja ────────────────────────────────────────────────
 async function buildPPTX(data, slideStructure) {
@@ -159,7 +188,6 @@ async function buildPPTX(data, slideStructure) {
     s.addText(title, { x: 0.5, y: 0.15, w: 11, h: 0.5, fontSize: 24, fontFace: F, bold: true, color: C.deepBlue, margin: 0 });
   };
 
-  // Build each slide based on structure
   for (const slideDef of slideStructure) {
     const d = data[slideDef.id] || {};
     switch (slideDef.layout) {
@@ -174,7 +202,8 @@ async function buildPPTX(data, slideStructure) {
   }
 
   // End slide
-  { const s = pres.addSlide();
+  {
+    const s = pres.addSlide();
     s.background = { color: C.deepBlue };
     s.addShape(pres.shapes.OVAL, { x: 9.5, y: -1.5, w: 5.5, h: 5.5, fill: { color: C.digitalBlue, transparency: 75 }, line: { color: C.digitalBlue, transparency: 75 } });
     s.addShape(pres.shapes.OVAL, { x: 10.6, y: -0.2, w: 3.0, h: 3.0, fill: { color: C.mint, transparency: 80 }, line: { color: C.mint, transparency: 80 } });
@@ -205,6 +234,7 @@ function buildBulletsSlide(pres, d, def, C, F, hdr) {
   s.background = { color: C.white };
   hdr(s, d.heading || def.label || "");
   const bullets = d.bullets || [];
+  if (bullets.length === 0) return; // Ei tyhjiä rivejä
   bullets.forEach((b, i) => {
     s.addShape(pres.shapes.RECTANGLE, { x: 0.5, y: 0.88 + i * 0.7, w: 0.06, h: 0.42, fill: { color: C.orange }, line: { color: C.orange } });
     s.addText(b, { x: 0.75, y: 0.88 + i * 0.7, w: 12.0, h: 0.56, fontSize: 13, fontFace: F, color: C.deepBlue, valign: "middle", margin: 0 });
@@ -229,6 +259,7 @@ function buildTableSlide(pres, d, def, C, F, hdr) {
     const bg = ri % 2 === 0 ? C.white : C.light;
     const y = tt + hh + ri * rh;
     row.forEach((cell, ci) => {
+      if (ci >= cols.length) return; // Älä ylivuoda sarakemäärää
       s.addShape(pres.shapes.RECTANGLE, { x: tl + ci * cw, y, w: cw, h: rh, fill: { color: bg }, line: { color: C.silver } });
       s.addText(String(cell || ""), { x: tl + ci * cw + 0.06, y, w: cw - 0.1, h: rh, fontSize: 11, fontFace: F, color: C.deepBlue, valign: "middle", margin: 0 });
     });
@@ -242,6 +273,7 @@ function buildGanttSlide(pres, d, def, C, F, hdr) {
   const totalWeeks = d.totalWeeks || 8;
   const frozenWeek = d.frozenWeek || null;
   const phases = d.phases || [];
+  if (phases.length === 0) return;
   const wcw = (12.3 - 3.2) / totalWeeks;
   const tl = 0.4, tt = 0.82, pcw = 3.2, rh = 0.48, hh = 0.36;
   s.addShape(pres.shapes.RECTANGLE, { x: tl, y: tt, w: pcw, h: hh, fill: { color: C.deepBlue }, line: { color: C.deepBlue } });
@@ -272,6 +304,7 @@ function buildCardsSlide(pres, d, def, C, F, hdr, mkS) {
   s.background = { color: C.white };
   hdr(s, d.heading || def.label || "");
   const cards = d.cards || [];
+  if (cards.length === 0) return;
   const levelColor = { high: C.red, medium: C.yellow, low: C.green, korkea: C.red, keski: C.yellow, matala: C.green };
   const cols = Math.min(cards.length, 3);
   const cw = 12.3 / cols;
@@ -304,7 +337,7 @@ function buildTwoColSlide(pres, d, def, C, F, hdr, mkS) {
   });
 }
 
-// ── Käynnistä palvelin ────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✅ Gofore agentti käynnissä portissa ${PORT}`);
