@@ -81,9 +81,15 @@ function strip(text) {
 }
 
 function isShortYes(text) {
-  const w = text.trim().toLowerCase().split(/\s+/);
-  if(w.length>5) return false;
-  return ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","okei","sovittu","hyväksyn","edetään","aloitetaan","siirrytään","toimii","tämä käy","joo hyvä"].some(x=>w.join(" ").includes(x)||w.includes(x));
+  const t = text.trim().toLowerCase();
+  const w = t.split(/\s+/);
+  if(w.length>8) return false;
+  // Yksittäiset sanat
+  const words=["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","okei","sovittu","hyväksyn","edetään","aloitetaan","siirrytään","toimii","mennään","jatketaan","eteenpäin","seuraava","jatkoon","kunnossa","fine","valmis"];
+  if(words.some(x=>w.includes(x))) return true;
+  // Fraasit
+  const phrases=["tämä käy","joo hyvä","tämä hyvä","mennään eteenpäin","rakenne hyvä","näillä mennään","ok hyvä","joo ok","kyllä kiitos","hyvältä näyttää","sopii hyvin","käy mulle","joo mennään","ihan hyvä","aika hyvä"];
+  return phrases.some(p=>t.includes(p));
 }
 
 const LAYOUT_DESC = {
@@ -293,9 +299,25 @@ export default function App() {
   async function runInterview(userText,ctx){
     const extra=ctx||docContextRef.current;
     const hist=[...history(),{role:"user",content:userText}];
+
+    // Jos käyttäjä antoi materiaalia TAI tekstiä → siirry suoraan fokukseen
+    // Ei turhia lisäkysymyksiä — fokuksen jälkeen keskustellaan tarkemmin
+    if(extra && extra.length > 100) {
+      // Riittävästi materiaalia → siirry fokukseen
+      addMsg("assistant","Kiitos materiaalista! Siirrytään valitsemaan esityksen tarkoitus.");
+      const h2=[...hist,{role:"assistant",content:"Kiitos materiaalista! Siirrytään valitsemaan esityksen tarkoitus."}];
+      await runFocusAsk(h2);
+      return;
+    }
+
     const r=await callAPI([...hist,{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Arvioi riittävätkö projektitiedot (tavoite+aikataulu+osapuolet).
-Jos EI: kysy YKSI puuttuva tieto. Jos KYLLÄ: vastaa + ##READY_TO_PLAN##`}],
+      `[JÄRJESTELMÄOHJE] Käyttäjä kertoi projektistaan. 
+Jos perustiedot (tavoite + aikataulu + osapuolet) ovat riittävällä tasolla:
+- Tiivistä 2-3 lauseella mitä ymmärsit ja lisää ##READY_TO_PLAN##
+- ÄLÄ kysy lisäkysymyksiä — niitä kysytään myöhemmin fokuksen valinnan jälkeen
+Jos tiedot ovat hyvin niukat (alle 2 lausetta, ei mitään konkreettista):
+- Kysy YKSI lyhyt kysymys
+Muista: Mieluummin eteenpäin liian aikaisin kuin liian myöhään.`}],
       PHASE_PROMPTS.interview+(extra?"\n\nLÄHDEMATERIAALIT:\n"+extra:""));
     addMsg("assistant",strip(r));
     if(r.includes("##READY_TO_PLAN##")) await runFocusAsk([...hist,{role:"assistant",content:strip(r)}]);
@@ -339,8 +361,10 @@ Odota vastaus.`}],
     }
     const hist=[...history(),{role:"user",content:userText}];
     const r=await callAPI([...hist,{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Käyttäjä haluaa muuttaa havaintolistaa. Päivitä, näytä, kysy hyväksyntä.
-Tarjoa myös vaihtoehtoinen painotus jos se on relevanttia.`}],phaseSystem());
+      `[JÄRJESTELMÄOHJE] Käyttäjä haluaa muuttaa tai tarkentaa havaintolistaa.
+Päivitä lista käyttäjän palautteen mukaan, näytä se, kysy hyväksyntä.
+TÄRKEÄ: ÄLÄ ehdota diarakennetta. ÄLÄ listaa dioja. Pysyt havainto-vaiheessa.
+Keskity VAIN havaintoihin ja riskeihin.`}],phaseSystem());
     addMsg("assistant",strip(r));
   }
 
@@ -503,8 +527,11 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
   // ═══ REVIEW — LOPPUKATSAUS ═══
   function showReview(slidesArr){
     setScreenSync("review");
-    addDivider("👀 Loppukatsaus — tarkista diat ennen PowerPointia");
-    addMsg("assistant","Kaikki diat on käyty läpi! Alla on esikatselu jokaisesta diasta.\n\nJos haluat palata muokkaamaan jotain diaa, klikkaa sitä tai kirjoita esim. \"muokkaa dia 2\".\n\nKun olet tyytyväinen, kirjoita \"valmis\" niin generoin PowerPointin.");
+    setMsgs(p=>[...p,
+      {type:"divider",content:"👀 Loppukatsaus — tarkista diat ennen PowerPointia"},
+      {role:"assistant",content:"Kaikki diat on käyty läpi! Tarkista esikatselut alla.\n\nKlikkaa diaa suurentaaksesi tai muokataksesi sitä.\nKun olet tyytyväinen, kirjoita \"valmis\"."},
+      {type:"review_gallery"},
+    ]);
   }
 
   async function runReview(userText){
@@ -705,13 +732,11 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
             <div style={{background:G.white,borderRadius:12,padding:"24px 40px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📂</div><div style={{color:G.digitalBlue,fontWeight:600}}>Pudota tiedostot tähän</div></div>
           </div>}
 
-          {/* Zoom-modal — suurennettu esikatselu */}
+          {/* Zoom-modal */}
           {zoomedSlide!==null&&slides[zoomedSlide]&&(
             <div onClick={()=>setZoomedSlide(null)} style={{position:"fixed",inset:0,background:"rgba(12,35,64,0.85)",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
               <div onClick={e=>e.stopPropagation()} style={{cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
-                <div style={{fontSize:14,color:G.white,fontWeight:600,marginBottom:4}}>
-                  Dia {zoomedSlide+1}/{slides.length} — {slides[zoomedSlide].icon} {slides[zoomedSlide].label}
-                </div>
+                <div style={{fontSize:14,color:G.white,fontWeight:600}}>Dia {zoomedSlide+1}/{slides.length} — {slides[zoomedSlide].icon} {slides[zoomedSlide].label}</div>
                 <div style={{transform:"scale(2)",transformOrigin:"center center"}}>
                   <SlidePreview slide={slides[zoomedSlide]} data={collectedRef.current[slides[zoomedSlide].id]} />
                 </div>
@@ -724,27 +749,9 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
                     pendingSlideRef.current=collectedRef.current[s.id]||null;
                     addDivider("✏️ Muokataan: Dia "+(i+1)+" — "+s.label);
                     addMsg("assistant","Mitä haluat muuttaa diassa \""+s.label+"\"? Kirjoita muutokset tai \"en mitään\" palataksesi.");
-                  }} style={{background:G.orange,color:G.white,border:"none",borderRadius:8,padding:"10px 24px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
-                    ✏️ Muokkaa tätä diaa
-                  </button>
-                  <button onClick={()=>setZoomedSlide(null)} style={{background:"transparent",color:G.white,border:"1px solid "+G.silver,borderRadius:8,padding:"10px 24px",fontSize:14,cursor:"pointer"}}>
-                    Sulje
-                  </button>
+                  }} style={{background:G.orange,color:G.white,border:"none",borderRadius:8,padding:"10px 24px",fontSize:14,fontWeight:600,cursor:"pointer"}}>✏️ Muokkaa</button>
+                  <button onClick={()=>setZoomedSlide(null)} style={{background:"transparent",color:G.white,border:"1px solid "+G.silver,borderRadius:8,padding:"10px 24px",fontSize:14,cursor:"pointer"}}>Sulje</button>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Review-näkymä: kaikkien diojen esikatselut */}
-          {screen==="review"&&slides.length>0&&(
-            <div style={{margin:"12px 0 20px"}}>
-              <div style={{display:"flex",flexWrap:"wrap",gap:12,justifyContent:"center"}}>
-                {slides.map((s,i)=>(
-                  <div key={s.id} style={{textAlign:"center",cursor:"pointer"}} onClick={()=>setZoomedSlide(i)}>
-                    <SlidePreview slide={s} data={collectedRef.current[s.id]} />
-                    <div style={{fontSize:10,color:G.grey,marginTop:4}}>Dia {i+1}: {s.label} <span style={{color:G.digitalBlue}}>🔍</span></div>
-                  </div>
-                ))}
               </div>
             </div>
           )}
@@ -757,6 +764,19 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
                   style={{background:building?G.grey:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 32px",fontSize:15,fontWeight:700,cursor:building?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(232,82,26,0.3)"}}>
                   {building?"⏳ Rakennetaan...":"🚀 Lataa PowerPoint"}
                 </button>
+              </div>
+            );
+            // REVIEW GALLERY — inline viestien seassa
+            if(m.type==="review_gallery")return(
+              <div key={i} style={{margin:"12px 0 20px"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:12,justifyContent:"center"}}>
+                  {slides.map((s,si)=>(
+                    <div key={s.id} style={{textAlign:"center",cursor:"pointer"}} onClick={()=>setZoomedSlide(si)}>
+                      <SlidePreview slide={s} data={collectedRef.current[s.id]} />
+                      <div style={{fontSize:10,color:G.grey,marginTop:4}}>Dia {si+1}: {s.label} <span style={{color:G.digitalBlue}}>🔍</span></div>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
             return<Bubble key={i} role={m.role} content={m.content}/>;
