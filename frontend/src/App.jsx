@@ -488,7 +488,7 @@ Vastaa VAIN JSON. Ei selityksiä. Käytä TARKALLEEN yllä sovittua sisältöä.
     }catch(e){return{name:f.name,content:"["+f.name+": virhe]"};}}
     return{name:f.name,content:"["+f.name+" — ei tuettu]"};
   }
-  async function addFiles(fl){setAttachments(p=>[...p,...await Promise.all(Array.from(fl).map(readFile))]);}
+  async function addFiles(fl){const read=await Promise.all(Array.from(fl).map(readFile));setAttachments(p=>[...p,...read]);}
   async function onDrop(e){
     e.preventDefault();setDragOver(false);const files=[];
     if(e.dataTransfer.items){for(const item of Array.from(e.dataTransfer.items)){if(item.kind==="file"){const f=item.getAsFile();if(f)files.push(f);}}}
