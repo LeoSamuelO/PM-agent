@@ -406,10 +406,19 @@ Joka dialla: id (pieniä_kirjaimia), label, icon, layout.`}],phaseSystem());
     });
   }
 
+  /** Varmista että rakenteessa on AINA kansi ensimmäisenä */
+  function ensureKansi(structure) {
+    if (!structure || structure.length === 0) return structure;
+    const hasTitle = structure[0].layout === "title";
+    if (hasTitle) return structure;
+    // Lisää kansi automaattisesti
+    return [{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}, ...structure];
+  }
+
   async function runStructureConfirm(userText){
     const hasStruct=pendingStructRef.current&&Array.isArray(pendingStructRef.current)&&pendingStructRef.current.length>0;
     if(isShortYes(userText)&&hasStruct){
-      const confirmed=pendingStructRef.current;
+      const confirmed=ensureKansi(pendingStructRef.current);
       addMsg("assistant","Rakenne vahvistettu! Aloitetaan diojen sisällöntuotanto.");
       setSlides(confirmed);slidesRef.current=confirmed;
       setStatuses(Object.fromEntries(confirmed.map(s=>[s.id,"pending"])));
@@ -444,20 +453,46 @@ Tallenna: [STRUCTURE_DATA][...JSON...][/STRUCTURE_DATA]`}],phaseSystem());
       setStatuses(prev=>{const n={...prev};cur.forEach((s,i)=>{if(i===idx)n[s.id]="proposing";else if(n[s.id]!=="done")n[s.id]="pending";});return n;});
       const slide=cur[idx];
       const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"...","content":"..."}';
+
+      // Kansi-dia: generoi automaattisesti projektin tiedoista
+      if(slide.layout==="title"){
+        const r=await callAPI([...(hist||history()),{role:"user",content:
+          `[JÄRJESTELMÄOHJE] Generoi kansidialle sisältö projektin tiedoista.
+Tarvitaan: title (projektin nimi), tagline (1 lause), meta (päivämäärä, organisaatio), projectLead (jos tiedossa)
+
+Ehdota sisältö ja kysy: "Sopiiko tämä kansidian sisältö? Haluatko muuttaa nimeä, taglinea tai muita tietoja?"
+
+Tallenna AINA:
+[SLIDE_DATA:${slide.id}]{"title":"...","tagline":"...","meta":"...","projectLead":"..."}[/SLIDE_DATA]`}],phaseSystem());
+        const extracted=extractSlideData(r);
+        pendingSlideRef.current=extracted[slide.id]||null;
+        addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
+        addMsg("assistant",strip(r));
+        setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
+        return;
+      }
+
+      // Muut diat: ehdota sisältö
       const r=await callAPI([...(hist||history()),{role:"user",content:
         `[DIA ${idx+1}/${cur.length} — ${slide.label}]
 Layout: ${LAYOUT_DESC[slide.layout]||"vapaa"}
 
-Ehdota sisältö. Tarjoa mielellään 2 eri lähestymistapaa ja kysy kumpi sopii:
-- Esim: "Vaihtoehto A: keskitytään X:ään / Vaihtoehto B: laajempi näkökulma Y"
-
+Ehdota sisältö. Tarjoa mielellään 2 eri lähestymistapaa ja kysy kumpi sopii.
 Kysy: "Kumpi vaihtoehto sopii, vai haluatko muutoksia?"
 
-TÄRKEÄ: Tallenna EHDOTTAMASI vaihtoehto A AINA data-tagiin:
+KRIITTINEN: Tallenna ehdottamasi sisältö AINA tähän tagiin:
 [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
-Täytä schema projektin tiedoilla. Vain tämä dia.`}],phaseSystem());
+Ilman tätä tagia data ei tallennu! Täytä KAIKKI kentät projektin tiedoilla.`}],phaseSystem());
       const extracted=extractSlideData(r);
       pendingSlideRef.current=extracted[slide.id]||null;
+
+      // Jos AI ei tuottanut dataa, yritä generoida heti taustalla
+      if(!pendingSlideRef.current){
+        console.warn("⚠️ Ei SLIDE_DATA, generoidaan taustalla:", slide.id);
+        const bgData=await genSlideData(slide, strip(r));
+        if(bgData) pendingSlideRef.current=bgData;
+      }
+
       addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
       addMsg("assistant",strip(r));
       setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
@@ -475,7 +510,11 @@ Täytä schema projektin tiedoilla. Vain tämä dia.`}],phaseSystem());
     if(isShortYes(userText)||isCancel){
       // Hyväksy tai peruuta muokkaus → tallenna olemassa oleva data
       let slideData=pendingSlideRef.current||collectedRef.current[slide.id];
-      if(!slideData){slideData=await genSlideData(slide);}
+      if(!slideData){
+        // Hae viimeisin assistentin viesti kontekstiksi
+        const lastAi=[...msgs].reverse().find(m=>m.role==="assistant")?.content||"";
+        slideData=await genSlideData(slide, lastAi);
+      }
       if(slideData){const nc={...collectedRef.current,[slide.id]:slideData};collectedRef.current=nc;setCollected(nc);}
       pendingSlideRef.current=null;
       setStatuses(prev=>({...prev,[slide.id]:"done"}));
@@ -512,12 +551,17 @@ Tallenna: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]`}],phaseSystem());
     addMsg("assistant",strip(r));
   }
 
-  async function genSlideData(slide){
+  async function genSlideData(slide, discussedContent){
     const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"..."}';
     try{
+      const contextNote = discussedContent
+        ? `\n\nTÄSSÄ ON SOVITTU SISÄLTÖ JOKA PITÄÄ MUUNTAA JSON:KSI:\n${discussedContent.substring(0,1500)}`
+        : "";
       const r=await callAPI([...history(),{role:"user",content:
-        `[JÄRJESTELMÄOHJE] Generoi "${slide.label}" (${slide.layout}) JSON: ${schema}
-Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
+        `[JÄRJESTELMÄOHJE] Generoi "${slide.label}" (${slide.layout}) JSON täsmälleen tällä skeemalla:
+${schema}
+${contextNote}
+Vastaa VAIN JSON. Ei selityksiä. Käytä TARKALLEEN yllä sovittua sisältöä.`}],phaseSystem());
       const m=r.match(/\{[\s\S]*\}/);
       if(m) return JSON.parse(m[0]);
     }catch(e){console.error("genSlideData:",e);}
@@ -529,7 +573,7 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
     setScreenSync("review");
     setMsgs(p=>[...p,
       {type:"divider",content:"👀 Loppukatsaus — tarkista diat ennen PowerPointia"},
-      {role:"assistant",content:"Kaikki diat on käyty läpi! Tarkista esikatselut alla.\n\nKlikkaa diaa suurentaaksesi tai muokataksesi sitä.\nKun olet tyytyväinen, kirjoita \"valmis\"."},
+      {role:"assistant",content:"Kaikki diat on käyty läpi! Tarkista esikatselut alla.\n\nKlikkaa diaa suurentaaksesi tai muokataksesi sitä.\nKun olet tyytyväinen, kirjoita \"valmis\".\n\n💡 Huom: Esikatselut ovat yksinkertaistettuja — lopullinen PowerPoint näyttää viimeistellymmältä."},
       {type:"review_gallery"},
     ]);
   }

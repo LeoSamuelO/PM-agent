@@ -188,6 +188,14 @@ async function buildPPTX(data, slideStructure) {
     s.addText(title, { x: 0.5, y: 0.15, w: 11, h: 0.5, fontSize: 24, fontFace: F, bold: true, color: C.deepBlue, margin: 0 });
   };
 
+  // Varmista että kansi on aina ensimmäinen dia
+  const hasTitle = slideStructure.length > 0 && slideStructure[0].layout === "title";
+  if (!hasTitle) {
+    const kansiData = data.kansi || { title: "Projektisuunnitelma", tagline: "", meta: new Date().toLocaleDateString("fi-FI") };
+    buildTitleSlide(pres, kansiData, C, F);
+    console.log("ℹ️ Kansi-dia lisätty automaattisesti");
+  }
+
   for (const slideDef of slideStructure) {
     const d = data[slideDef.id] || {};
     switch (slideDef.layout) {
