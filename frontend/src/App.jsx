@@ -13,21 +13,14 @@ TÄNÄÄN ON: ${TODAY}.
 ROOLISI: Olet osa sovellusta joka generoi PowerPoint-tiedoston automaattisesti. Sinun EI tarvitse tehdä PPTX-tiedostoa. Roolisi on kerätä sisältö keskustelemalla.
 PERUSSÄÄNNÖT:
 1. ÄLÄ keksi tietoja. Käytä VAIN annettuja materiaaleja.
-2. Merkitse arviot: "(arvio)". Puuttuva tieto → KYSY.
+2. Puuttuva tieto → KYSY.
 3. Ole ytimekäs, max 2-3 kappaletta.
 4. Käsittele VAIN pyydetty asia. Älä hyppää eteenpäin.
 5. Kysy mielipide ja odota vastaus.
-6. Tarjoa mielellään 2 eri lähestymistapaa ja kysy kumpaa käyttäjä suosii.`;
+6. Tarjoa mielellään 2 eri lähestymistapaa.
+TÄRKEÄ: ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja. Kirjoita VAIN luonnollista suomea. Sovellus hoitaa datan tallennuksen erikseen.`;
 
-const PHASE_PROMPTS = {
-  interview: "VAIHE: Haastattelu. Kerää projektitiedot. Kun riittää: ##READY_TO_PLAN##",
-  focus: "VAIHE: Fokus",
-  insights: "VAIHE: Havainnot. ÄLÄ ehdota diarakennetta. ÄLÄ listaa dioja. Pysyt havainto-vaiheessa.",
-  structure: "VAIHE: Diarakenne. Ehdota rakenne ja odota hyväksyntä.",
-  planning: "VAIHE: Diojen sisältö. Käsittele VAIN yksi dia kerrallaan.",
-};
-
-const SEARCH_TRIGGERS = ["hae","etsi","googla","selvitä","tarkista netistä","search"];
+const SEARCH_TRIGGERS = ["hae","etsi","googla","selvitä","search"];
 
 async function callAPI(messages, systemExtra, forceSearch) {
   const system = systemExtra ? SYSTEM+"\n\n"+systemExtra : SYSTEM;
@@ -43,63 +36,65 @@ async function callAPI(messages, systemExtra, forceSearch) {
   return d.text;
 }
 
-function extractTag(text, tag) {
-  const re = new RegExp("\\["+tag+"\\]([\\s\\S]*?)\\[\\/"+tag+"\\]");
-  const m = text.match(re);
-  if(!m) return null;
-  try { const p=JSON.parse(m[1].trim()); return (tag==="STRUCTURE_DATA"&&!Array.isArray(p))?Object.values(p).filter(v=>v&&v.id):p; } catch{return null;}
-}
+/** Erillinen API-kutsu joka muuntaa luonnollisen tekstin JSON-dataksi.
+ *  Tämä on "vaihe 2" kaksivaiheisesta tallennuksesta. */
+async function convertToJSON(slideLabel, layout, proposalText) {
+  const schemas = {
+    title:'{"title":"projektin nimi","tagline":"1 lause","meta":"pvm | organisaatio","projectLead":"nimi tai tyhjä"}',
+    bullets:'{"heading":"otsikko","bullets":["kohta 1","kohta 2","kohta 3"],"note":"valinnainen huomio"}',
+    table:'{"heading":"otsikko","columns":["Sarake1","Sarake2","Sarake3"],"rows":[["arvo1","arvo2","arvo3"]]}',
+    gantt:'{"heading":"otsikko","totalWeeks":10,"frozenWeek":null,"phases":[{"name":"Vaihe","start":1,"end":3,"critical":false}]}',
+    cards:'{"heading":"otsikko","cards":[{"icon":"⚠️","title":"otsikko","desc":"kuvaus","level":"high"}]}',
+    "two-col":'{"heading":"otsikko","left":{"title":"vasen","items":["kohta"]},"right":{"title":"oikea","items":["kohta"]}}',
+  };
+  const schema = schemas[layout] || schemas.bullets;
+  const r = await callAPI([{role:"user",content:
+    `Muunna alla oleva dian sisältö JSON-muotoon.
 
-function extractSlideData(text) {
-  const out={};
-  const re=/\[SLIDE_DATA:([\w_-]+)\]([\s\S]*?)\[\/SLIDE_DATA\]/g;
-  let m; while((m=re.exec(text))){try{out[m[1]]=JSON.parse(m[2].trim());}catch{}}
-  return out;
+DIA: "${slideLabel}" (layout: ${layout})
+JSON-SKEEMA: ${schema}
+
+DIAN SOVITTU SISÄLTÖ:
+---
+${proposalText.substring(0,3000)}
+---
+
+SÄÄNNÖT:
+1. Vastaa VAIN JSON-objektilla. Ei mitään muuta.
+2. Käytä TÄSMÄLLEEN yllä olevan sisällön tiedot. ÄLÄ keksi uutta.
+3. Jokainen kohta/rivi sisällöstä PITÄÄ olla JSON:ssa.
+4. ÄLÄ muuta sanamuotoja. ÄLÄ tiivistä. ÄLÄ jätä pois.`}],
+    "Olet JSON-muunnin. Vastaa VAIN validilla JSON-objektilla."
+  );
+  try {
+    const m = r.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+  } catch(e) { console.error("JSON parse error:", e); }
+  return null;
 }
 
 function strip(text) {
   let t = text;
+  // Poista mahdolliset tagit jotka AI saattaa silti tuottaa
   t = t.replace(/\[SLIDE_DATA:[\w_-]+\][\s\S]*?\[\/SLIDE_DATA\]/g, "");
-  t = t.replace(/^.*\[SLIDE_DATA:.*$/gm, "");
-  t = t.replace(/^.*\[\/SLIDE_DATA\].*$/gm, "");
   t = t.replace(/\[STRUCTURE_DATA\][\s\S]*?\[\/STRUCTURE_DATA\]/g, "");
-  t = t.replace(/^.*\[STRUCTURE_DATA\].*$/gm, "");
-  t = t.replace(/^.*\[\/STRUCTURE_DATA\].*$/gm, "");
-  t = t.replace(/\[FOCUS_TYPE\][\s\S]*?\[\/FOCUS_TYPE\]/g, "");
-  t = t.replace(/\[JÄRJESTELMÄOHJE[^\]]*\][\s\S]*?(?=\n\n|$)/g, "");
+  t = t.replace(/^.*\[(SLIDE_DATA|STRUCTURE_DATA|FOCUS_TYPE|JÄRJESTELMÄOHJE).*$/gm, "");
   t = t.replace(/##[\w_]+##/g, "");
   t = t.replace(/\n{3,}/g, "\n\n");
   return t.trim();
 }
 
 function isShortYes(text) {
-  const t = text.trim().toLowerCase();
-  const w = t.split(/\s+/);
+  const t = text.trim().toLowerCase(); const w = t.split(/\s+/);
   if(w.length>8) return false;
-  const words=["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","okei","sovittu","hyväksyn","edetään","aloitetaan","siirrytään","toimii","mennään","jatketaan","eteenpäin","seuraava","kunnossa","valmis"];
-  if(words.some(x=>w.includes(x))) return true;
-  const phrases=["tämä käy","joo hyvä","tämä hyvä","mennään eteenpäin","rakenne hyvä","näillä mennään","joo ok","hyvältä näyttää","sopii hyvin","ihan hyvä","tämä sopii","tämä riittää","aika hyvä"];
-  return phrases.some(p=>t.includes(p));
+  if(["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","okei","sovittu","hyväksyn","edetään","aloitetaan","siirrytään","toimii","mennään","jatketaan","eteenpäin","seuraava","kunnossa","valmis"].some(x=>w.includes(x))) return true;
+  return ["tämä käy","joo hyvä","tämä hyvä","mennään eteenpäin","rakenne hyvä","näillä mennään","hyvältä näyttää","sopii hyvin","ihan hyvä","tämä sopii"].some(p=>t.includes(p));
 }
 
-const SLIDE_SCHEMAS = {
-  title:'{"title":"...","tagline":"...","meta":"...","projectLead":"..."}',
-  bullets:'{"heading":"...","bullets":["kohta 1","kohta 2"],"note":""}',
-  table:'{"heading":"...","columns":["S1","S2"],"rows":[["a","b"]]}',
-  gantt:'{"heading":"Aikataulu","totalWeeks":8,"frozenWeek":null,"phases":[{"name":"V","start":1,"end":2,"critical":false}]}',
-  cards:'{"heading":"...","cards":[{"icon":"⚠️","title":"...","desc":"...","level":"high"}]}',
-  "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
-};
-const LAYOUT_DESC = {
-  title:"otsikkodia", bullets:"bullet-lista (4-7 kohtaa)", table:"taulukko",
-  gantt:"Gantt-kaavio", cards:"korttiruudukko (2-4 korttia)", "two-col":"kaksipalstainen",
-};
+const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen"};
 
-// ═══ UI-KOMPONENTIT ═══
-function Divider({text}){return(
-  <div style={{display:"flex",alignItems:"center",gap:12,margin:"20px 0"}}>
-    <div style={{flex:1,height:1,background:G.silver}}/><span style={{background:G.light,border:"1px solid "+G.silver,borderRadius:20,padding:"3px 14px",fontSize:12,color:G.grey,fontWeight:600,whiteSpace:"nowrap"}}>{text}</span><div style={{flex:1,height:1,background:G.silver}}/>
-  </div>);}
+// ═══ UI ═══
+function Divider({text}){return(<div style={{display:"flex",alignItems:"center",gap:12,margin:"20px 0"}}><div style={{flex:1,height:1,background:G.silver}}/><span style={{background:G.light,border:"1px solid "+G.silver,borderRadius:20,padding:"3px 14px",fontSize:12,color:G.grey,fontWeight:600,whiteSpace:"nowrap"}}>{text}</span><div style={{flex:1,height:1,background:G.silver}}/></div>);}
 
 function Bubble({role,content}){
   const ai=role==="assistant";
@@ -110,12 +105,10 @@ function Bubble({role,content}){
 
 function Pill({slide,status}){
   const cfg={pending:{bg:G.light,border:G.silver,color:G.grey,sub:""},proposing:{bg:"#FFF3EE",border:G.orange,color:G.orange,sub:"Ehdotettu"},confirming:{bg:"#E8F4FB",border:G.digitalBlue,color:G.digitalBlue,sub:"Odottaa"},done:{bg:"#E8FAF7",border:G.mint,color:G.mint,sub:"✓ Sovittu"}}[status]||{bg:G.light,border:G.silver,color:G.grey,sub:""};
-  return(<div style={{background:cfg.bg,border:"1.5px solid "+cfg.border,borderRadius:10,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:8,transition:"all 0.2s"}}>
+  return(<div style={{background:cfg.bg,border:"1.5px solid "+cfg.border,borderRadius:10,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
     <span style={{fontSize:15}}>{slide.icon||"📄"}</span>
-    <div style={{flex:1,minWidth:0}}>
-      <div style={{fontSize:12,fontWeight:600,color:cfg.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{slide.label}</div>
-      {cfg.sub&&<div style={{fontSize:10,color:cfg.color,opacity:0.8}}>{cfg.sub}</div>}
-    </div>
+    <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:cfg.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{slide.label}</div>
+    {cfg.sub&&<div style={{fontSize:10,color:cfg.color,opacity:0.8}}>{cfg.sub}</div>}</div>
     <div style={{width:7,height:7,borderRadius:"50%",background:cfg.border,flexShrink:0}}/>
   </div>);}
 
@@ -131,7 +124,6 @@ export default function App() {
   const [slides, setSlides] = useState([]);
   const [slideIdx, setSlideIdx] = useState(0);
   const [statuses, setStatuses] = useState({});
-  const [collected, setCollected] = useState({});
   const [building, setBuilding] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [docContext, setDocContext] = useState("");
@@ -143,26 +135,41 @@ export default function App() {
   const collectedRef=useRef({}); const proposingRef=useRef(false);
   const screenRef=useRef("intro"); const slideIdxRef=useRef(0);
   const slidesRef=useRef([]); const focusTypeRef=useRef("");
-  const pendingStructRef=useRef(null); const pendingSlideRef=useRef(null);
+  const pendingStructRef=useRef(null);
   const docContextRef=useRef("");
-  const lastProposalRef=useRef({}); // {slideId: "AI:n ehdotusteksti"} — käytetään fallbackissa
+  // PARANNUS 1: Tallenna jokaisen dian ehdotusteksti konversio-vaihetta varten
+  const lastProposalRef=useRef({});
+  // PARANNUS 2: Historian tiivistelmä — sisältää vaiheet 1-4 tiivistettynä
+  const summaryRef=useRef("");
 
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,busy]);
-
   function setScreenSync(v){setScreen(v);screenRef.current=v;}
   function setSlideIdxSync(v){setSlideIdx(v);slideIdxRef.current=v;}
-
-  const history=useCallback(()=>msgs.filter(m=>m.role==="user"||m.role==="assistant").map(m=>({role:m.role,content:m.content})),[msgs]);
   const addMsg=useCallback((role,content)=>setMsgs(p=>[...p,{role,content}]),[]);
   const addDivider=useCallback((text)=>setMsgs(p=>[...p,{type:"divider",content:text}]),[]);
 
-  const phaseSystem=useCallback(()=>{
-    const ctx=docContextRef.current; const focus=focusTypeRef.current;
-    let extra=PHASE_PROMPTS[screenRef.current]||"";
-    if(ctx) extra+="\n\nLÄHDEMATERIAALIT:\n"+ctx;
-    if(focus) extra+="\n\nFOKUS: "+focus;
-    return extra;
-  },[]);
+  // PARANNUS 2: Tiivistetty historia API-kutsuja varten
+  // Sen sijaan, että lähetetään koko viestihisoria, rakennetaan konteksti tiivistelmästä
+  function buildContext() {
+    let ctx = "";
+    if (summaryRef.current) ctx += summaryRef.current + "\n\n";
+    if (docContextRef.current) ctx += "LÄHDEMATERIAALIT:\n" + docContextRef.current.substring(0, 3000) + "\n\n";
+    if (focusTypeRef.current) ctx += "FOKUS: " + focusTypeRef.current + "\n\n";
+    return ctx;
+  }
+
+  // Hae viimeisimmät viestit (max N kpl) nykyisestä vaiheesta
+  function recentMessages(maxPairs) {
+    const all = msgs.filter(m => m.role === "user" || m.role === "assistant");
+    const recent = all.slice(-(maxPairs * 2));
+    return recent.map(m => ({role: m.role, content: m.content}));
+  }
+
+  // Luo tiivistelmä kun vaihdetaan vaiheesta toiseen
+  async function updateSummary(phaseNote) {
+    const current = summaryRef.current || "";
+    summaryRef.current = current + (current ? "\n" : "") + phaseNote;
+  }
 
   // ═══ VAIHE 1: HAASTATTELU ═══
   function startInterview(){
@@ -173,48 +180,42 @@ export default function App() {
 
   async function runInterview(userText,ctx){
     const extra=ctx||docContextRef.current;
-    const hist=[...history(),{role:"user",content:userText}];
-    // Jos riittävästi materiaalia → suoraan fokukseen
     if(extra && extra.length > 100) {
       addMsg("assistant","Kiitos materiaalista! Siirrytään valitsemaan esityksen tarkoitus.");
-      await runFocusAsk([...hist,{role:"assistant",content:"Kiitos materiaalista!"}]);
+      await updateSummary("HAASTATTELU: Käyttäjä antoi projektimateriaalin.");
+      await runFocusAsk();
       return;
     }
-    const r=await callAPI([...hist,{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Onko tiedot riittävät (tavoite+aikataulu+osapuolet)?
-Jos KYLLÄ: tiivistä 2 lauseella + ##READY_TO_PLAN##. ÄLÄ kysy lisää.
-Jos EI (hyvin niukat tiedot): kysy YKSI lyhyt kysymys.`}],
-      PHASE_PROMPTS.interview+(extra?"\n\nLÄHDEMATERIAALIT:\n"+extra:""));
+    const r=await callAPI([...recentMessages(3),{role:"user",content:userText},
+      {role:"user",content:"[JÄRJESTELMÄOHJE] Riittävätkö tiedot? Jos KYLLÄ: tiivistä 2 lauseella + ##READY_TO_PLAN##. Jos EI: kysy YKSI kysymys."}],
+      "VAIHE: Haastattelu.\n"+buildContext());
     addMsg("assistant",strip(r));
-    if(r.includes("##READY_TO_PLAN##")) await runFocusAsk([...hist,{role:"assistant",content:strip(r)}]);
+    if(r.includes("##READY_TO_PLAN##")){
+      await updateSummary("HAASTATTELU: "+strip(r).substring(0,300));
+      await runFocusAsk();
+    }
   }
 
   // ═══ VAIHE 2: FOKUS ═══
-  async function runFocusAsk(hist){
+  async function runFocusAsk(){
     setScreenSync("focus");
     addDivider("🎯 Vaihe 2 — Esityksen fokus");
-    const r=await callAPI([...(hist||history()),{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Kerro 1 lauseella projektin tilanteesta ja kysy:
-"Mihin tarkoitukseen tämä esitys tehdään?"
-1. 📋 Yleinen projektisuunnitelma  2. ⚠️ Riskianalyysi  3. 📅 Aikataulukatsaus
-4. 🚀 Kickoff-materiaali  5. 👥 Sidosryhmäraportti  6. 🔍 Muu
-Odota vastaus. ÄLÄ tee mitään muuta.`}],
-      PHASE_PROMPTS.focus+(docContextRef.current?"\n\nLÄHDEMATERIAALIT:\n"+docContextRef.current:""));
+    const r=await callAPI([{role:"user",content:
+      "Kerro 1 lauseella projektin tilanteesta ja kysy mihin tarkoitukseen esitys tehdään:\n1. 📋 Yleinen projektisuunnitelma\n2. ⚠️ Riskianalyysi\n3. 📅 Aikataulukatsaus\n4. 🚀 Kickoff-materiaali\n5. 👥 Sidosryhmäraportti\n6. 🔍 Muu"}],
+      "VAIHE: Fokus.\n"+buildContext());
     addMsg("assistant",strip(r));
   }
 
   async function runFocusConfirm(userText){
     setFocusType(userText.trim()); focusTypeRef.current=userText.trim();
+    await updateSummary("FOKUS: "+userText.trim());
     setScreenSync("insights");
     addDivider("🔍 Vaihe 3 — Tärkeimmät havainnot");
-    const hist=[...history(),{role:"user",content:userText}];
-    const r=await callAPI([...hist,{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Fokus: "${userText.trim()}"
-1. Vahvista 1 lauseella
-2. Listaa 4-6 havaintoa tämän fokuksen näkökulmasta
-3. Kysy tarkentavia kysymyksiä jotka auttavat ymmärtämään projektin kokonaisuutta paremmin
-4. Kysy: "Hyväksytkö nämä havainnot vai haluatko muuttaa/täydentää?"
-TÄRKEÄ: ÄLÄ ehdota diarakennetta. ÄLÄ listaa dioja. Pysyt havainto-vaiheessa.`}],phaseSystem());
+    const r=await callAPI([{role:"user",content:
+      `Fokus: "${userText.trim()}"
+Listaa 4-6 havaintoa tämän fokuksen näkökulmasta ja kysy tarkentavia kysymyksiä.
+ÄLÄ ehdota diarakennetta. Kysy: "Hyväksytkö vai haluatko muuttaa?"`}],
+      "VAIHE: Havainnot.\n"+buildContext());
     addMsg("assistant",strip(r));
   }
 
@@ -222,105 +223,88 @@ TÄRKEÄ: ÄLÄ ehdota diarakennetta. ÄLÄ listaa dioja. Pysyt havainto-vaihees
   async function runInsightsConfirm(userText){
     if(isShortYes(userText)){
       addMsg("assistant","Hienoa! Siirrytään rakentamaan diarakenne.");
-      const hist=[...history(),{role:"user",content:userText},{role:"assistant",content:"Hienoa! Siirrytään rakentamaan diarakenne."}];
-      await runStructureAsk(hist); return;
+      // Tiivistä havainnot
+      const lastAi=msgs.filter(m=>m.role==="assistant").slice(-2).map(m=>m.content).join("\n");
+      await updateSummary("HAVAINNOT:\n"+lastAi.substring(0,500));
+      await runStructureAsk(); return;
     }
-    const hist=[...history(),{role:"user",content:userText}];
-    const r=await callAPI([...hist,{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Käyttäjä kommentoi havaintoja. Päivitä lista, näytä, kysy hyväksyntä.
-TÄRKEÄ: ÄLÄ ehdota diarakennetta. ÄLÄ listaa dioja. Pysyt havainto-vaiheessa.`}],phaseSystem());
+    const r=await callAPI([...recentMessages(3),{role:"user",content:userText},
+      {role:"user",content:"[JÄRJESTELMÄOHJE] Päivitä havainnot. ÄLÄ ehdota diarakennetta."}],
+      "VAIHE: Havainnot.\n"+buildContext());
     addMsg("assistant",strip(r));
   }
 
   // ═══ VAIHE 4: RAKENNE ═══
-  async function runStructureAsk(hist){
+  async function runStructureAsk(){
     setScreenSync("structure");
     addDivider("📐 Vaihe 4 — Diarakenne");
-    const r=await callAPI([...(hist||history()),{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Fokus: "${focusTypeRef.current}"
-Ehdota KAKSI diarakennevaihtoehtoa. Ensimmäinen dia on AINA kansi (layout: title).
-
-**Vaihtoehto A: Tiivis (4-6 diaa)**
-1. 🎯 Kansi - title
-2. ...jne
-
-**Vaihtoehto B: Kattava (7-9 diaa)**
-1. 🎯 Kansi - title
-2. ...jne
-
-Layoutit: title, bullets, table, gantt, cards, two-col
-Kysy: "Kumpi sopii paremmin vai haluatko yhdistelmän?"
-
-TÄRKEÄ: Tallenna vaihtoehto A oletuksena:
-[STRUCTURE_DATA][{"id":"kansi","label":"Kansi","icon":"🎯","layout":"title"},{"id":"dia_2","label":"...","icon":"📋","layout":"bullets"},...][/STRUCTURE_DATA]
-Joka dialla: id (pieniä_kirjaimia), label, icon, layout. Kansi AINA ensimmäisenä.`}],phaseSystem());
-    const structure=extractTag(r,"STRUCTURE_DATA");
-    if(structure&&Array.isArray(structure)&&structure.length>0) pendingStructRef.current=structure;
-    else{const fb=tryParseStructure(r);if(fb) pendingStructRef.current=fb;}
+    const r=await callAPI([{role:"user",content:
+      `Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":
+**Vaihtoehto A: Tiivis (4-6 diaa)** — kansi + 3-5 sisältödiaa
+**Vaihtoehto B: Kattava (7-9 diaa)** — kansi + 6-8 sisältödiaa
+Ensimmäinen dia on AINA: 1. 🎯 Kansi - title
+Jokainen rivi: numero + emoji + nimi + layout (bullets/table/gantt/cards/two-col)
+Kysy: "Kumpi sopii vai haluatko yhdistelmän?"`}],
+      "VAIHE: Diarakenne.\n"+buildContext());
+    const structure=tryParseStructure(strip(r));
+    if(structure) pendingStructRef.current=structure;
     addMsg("assistant",strip(r));
   }
 
   function tryParseStructure(text){
     const lines=text.split("\n").filter(l=>/^\d+\.\s/.test(l.trim()));
-    if(!lines.length)return null;
-    const kw={kansi:"title",otsikko:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",kortti:"cards",cards:"cards","two-col":"two-col",kaksi:"two-col"};
+    if(!lines.length) return null;
+    const kw={kansi:"title",otsikko:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",cards:"cards","two-col":"two-col"};
     return lines.map((line,i)=>{
       const iconM=line.match(/(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u);
-      const icon=iconM?iconM[1]:"📄";
-      const labelM=line.match(/\d+\.\s*(?:\S+\s+)?(?:\*{0,2})([\wÀ-ÿ\s-]+?)(?:\*{0,2})\s*[—–\-\(]/);
+      const labelM=line.match(/\d+\.\s*(?:\S+\s+)?(?:\*{0,2})([\wÀ-ÿ\s-]+?)(?:\*{0,2})\s*[-—–\(]/);
       const label=labelM?labelM[1].trim():"Dia "+(i+1);
       const id=label.toLowerCase().replace(/[^a-zäöå0-9]/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"")||"dia_"+(i+1);
-      // Tunnista layout sulkeista tai avainsanoista
-      const layoutMatch=line.match(/\((title|bullets|table|gantt|cards|two-col)\)/i);
-      let layout=layoutMatch?layoutMatch[1].toLowerCase():"bullets";
-      if(!layoutMatch){for(const[k,v]of Object.entries(kw)){if(line.toLowerCase().includes(k)){layout=v;break;}}}
-      return{id,label,icon,layout};
+      const layoutM=line.match(/[-–—]\s*(title|bullets|table|gantt|cards|two-col)/i) || line.match(/\((title|bullets|table|gantt|cards|two-col)\)/i);
+      let layout=layoutM?layoutM[1].toLowerCase():"bullets";
+      if(!layoutM){for(const[k,v]of Object.entries(kw)){if(line.toLowerCase().includes(k)){layout=v;break;}}}
+      if(i===0&&/kansi|cover/i.test(line))layout="title";
+      return{id,label,icon:iconM?iconM[1]:"📄",layout};
     });
   }
 
-  function ensureKansi(structure) {
-    if (!structure || structure.length === 0) return [{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}];
-    if (structure[0].layout === "title") return structure;
-    // Safety net — lisää kansi jos AI unohti sen
-    return [{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}, ...structure];
+  function ensureKansi(s){
+    if(!s||!s.length) return [{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}];
+    return s[0].layout==="title"?s:[{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"},...s];
   }
 
   async function runStructureConfirm(userText){
-    const hasStruct=pendingStructRef.current&&Array.isArray(pendingStructRef.current)&&pendingStructRef.current.length>0;
-
-    if(isShortYes(userText)&&hasStruct){
+    const has=pendingStructRef.current?.length>0;
+    if(isShortYes(userText)&&has){
       const confirmed=ensureKansi(pendingStructRef.current);
       addMsg("assistant","Rakenne vahvistettu! Aloitetaan diojen sisällöntuotanto.");
-      startPlanning(confirmed,[...history(),{role:"user",content:userText},{role:"assistant",content:"Rakenne vahvistettu!"}]);
-      return;
+      await updateSummary("RAKENNE: "+confirmed.map(s=>s.label+"("+s.layout+")").join(", "));
+      startPlanning(confirmed); return;
     }
-    if(isShortYes(userText)&&!hasStruct){
+    if(isShortYes(userText)&&!has){
       addMsg("assistant","Rakennetta ei tallennettu. Generoidaan uudelleen...");
-      await runStructureAsk(history()); return;
+      await runStructureAsk(); return;
     }
-    const hist=[...history(),{role:"user",content:userText}];
-    const r=await callAPI([...hist,{role:"user",content:
-      `[JÄRJESTELMÄOHJE] Käyttäjä kommentoi/valitsi rakenteen: "${userText}"
-Tee pyydetyt muutokset ja näytä LOPULLINEN rakenne. Kansi (title) AINA ensimmäisenä.
-Kysy: "Hyväksytkö tämän rakenteen?"
-ÄLÄ kysy enää montako diaa — käyttäjä kertoi jo.
-Tallenna: [STRUCTURE_DATA][...JSON, kansi mukana...][/STRUCTURE_DATA]`}],phaseSystem());
-    const structure=extractTag(r,"STRUCTURE_DATA");
-    if(structure&&Array.isArray(structure)&&structure.length>0) pendingStructRef.current=structure;
-    else{const fb=tryParseStructure(r);if(fb) pendingStructRef.current=fb;}
+    const r=await callAPI([...recentMessages(3),{role:"user",content:userText},
+      {role:"user",content:"[JÄRJESTELMÄOHJE] Tee muutokset ja näytä lopullinen rakenne. Kansi AINA 1. Kysy hyväksyntä."}],
+      "VAIHE: Diarakenne.\n"+buildContext());
+    const structure=tryParseStructure(strip(r));
+    if(structure) pendingStructRef.current=structure;
     addMsg("assistant",strip(r));
   }
 
-  // ═══ VAIHE 5: DIOJEN SISÄLTÖ ═══
-  function startPlanning(confirmed, hist){
+  // ═══ VAIHE 5: DIOJEN SISÄLTÖ (KAKSIVAIHEINEN) ═══
+  // Vaihe A: AI ehdottaa sisällön LUONNOLLISELLA KIELELLÄ (ei tageja)
+  // Vaihe B: Kun käyttäjä hyväksyy, erillinen convertToJSON muuntaa datan
+  function startPlanning(confirmed){
     setSlides(confirmed);slidesRef.current=confirmed;
     setStatuses(Object.fromEntries(confirmed.map(s=>[s.id,"pending"])));
     setScreenSync("planning"); setSlideIdxSync(0);
     addDivider("📄 Vaihe 5 — Diojen sisällöntuotanto");
-    setTimeout(()=>proposeSlide(0,hist,confirmed),100);
+    setTimeout(()=>proposeSlide(0,confirmed),100);
   }
 
-  async function proposeSlide(idx,hist,slidesArr){
+  async function proposeSlide(idx,slidesArr){
     if(proposingRef.current)return;
     proposingRef.current=true;
     try{
@@ -328,40 +312,19 @@ Tallenna: [STRUCTURE_DATA][...JSON, kansi mukana...][/STRUCTURE_DATA]`}],phaseSy
       setSlideIdxSync(idx);
       setStatuses(prev=>{const n={...prev};cur.forEach((s,i)=>{if(i===idx)n[s.id]="proposing";else if(n[s.id]!=="done")n[s.id]="pending";});return n;});
       const slide=cur[idx];
-      const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"...","bullets":["..."]}';
 
-      // Kansi-dia: erityiskäsittely
-      if(slide.layout==="title"){
-        const r=await callAPI([...(hist||history()),{role:"user",content:
-          `[JÄRJESTELMÄOHJE] Generoi kansidialle sisältö projektin tiedoista.
-Ehdota: title, tagline (1 lause), meta (päivämäärä + organisaatio), projectLead
-Kysy: "Sopiiko tämä kansidian sisältö?"
-Tallenna AINA: [SLIDE_DATA:${slide.id}]{"title":"...","tagline":"...","meta":"...","projectLead":"..."}[/SLIDE_DATA]`}],phaseSystem());
-        const extracted=extractSlideData(r);
-        pendingSlideRef.current=extracted[slide.id]||null;
-        const cleanText=strip(r);
-        lastProposalRef.current[slide.id]=cleanText;
-        if(!pendingSlideRef.current) pendingSlideRef.current=await genSlideData(slide,cleanText);
-        addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
-        addMsg("assistant",cleanText);
-        setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
-        return;
-      }
+      // AI ehdottaa sisältöä ILMAN JSON-tageja — pelkkä luonnollinen kieli
+      const prompt = slide.layout==="title"
+        ? `Ehdota kansidian sisältö:\n- Otsikko (projektin nimi)\n- Tagline (1 lause)\n- Meta (päivämäärä | organisaatio)\n- Projektipäällikkö\nKysy: "Sopiiko vai muutoksia?"`
+        : `Ehdota konkreettinen sisältö dialle "${slide.label}" (layout: ${LAYOUT_DESC[slide.layout]||slide.layout}).\nTarjoa 2 vaihtoehtoa ja kysy kumpi sopii.\nKirjoita sisältö selkeästi — älä käytä JSON:ia tai tageja.`;
 
-      const r=await callAPI([...(hist||history()),{role:"user",content:
-        `[DIA ${idx+1}/${cur.length} — ${slide.label}]
-Layout: ${LAYOUT_DESC[slide.layout]||"vapaa"}
-Ehdota konkreettinen sisältö. Tarjoa 2 vaihtoehtoa ja kysy kumpi sopii.
-KRIITTINEN — tallenna ehdotus AINA:
-[SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]
-Täytä KAIKKI kentät projektin OIKEILLA tiedoilla. Vain tämä dia.`}],phaseSystem());
-      const extracted=extractSlideData(r);
-      pendingSlideRef.current=extracted[slide.id]||null;
+      const r=await callAPI([{role:"user",content:`[DIA ${idx+1}/${cur.length} — ${slide.label}]\n${prompt}`}],
+        "VAIHE: Diojen sisältö.\n"+buildContext());
+
       const cleanText=strip(r);
       lastProposalRef.current[slide.id]=cleanText;
-      if(!pendingSlideRef.current) pendingSlideRef.current=await genSlideData(slide,cleanText);
       addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
-      addMsg("assistant",strip(r));
+      addMsg("assistant",cleanText);
       setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
     }finally{proposingRef.current=false;}
   }
@@ -370,18 +333,21 @@ Täytä KAIKKI kentät projektin OIKEILLA tiedoilla. Vain tämä dia.`}],phaseSy
     const cur=slidesRef.current; const idx=slideIdxRef.current;
     const slide=cur[idx]; const isLast=idx===cur.length-1;
 
-    const cancelWords=["en mitään","ei muutoksia","peruuta","en halua","ei tarvitse","ei muuteta","tämä on hyvä","en muuta"];
+    const cancelWords=["en mitään","ei muutoksia","peruuta","en halua","ei tarvitse","ei muuteta","en muuta"];
     const isCancel=editingSlide!==null && cancelWords.some(w=>userText.trim().toLowerCase().includes(w));
 
     if(isShortYes(userText)||isCancel){
-      let slideData=pendingSlideRef.current||collectedRef.current[slide.id];
-      if(!slideData){
-        // Käytä TÄSMÄLLEEN sitä tekstiä jonka AI ehdotti ja käyttäjä hyväksyi
-        const proposalText=lastProposalRef.current[slide.id]||"";
-        slideData=await genSlideData(slide,proposalText);
+      // PARANNUS 1: Erillinen JSON-konversio hyväksytystä tekstistä
+      addMsg("assistant","💾 Tallennetaan...");
+      const proposalText = isCancel
+        ? (lastProposalRef.current[slide.id] || "")  // Pidetään vanha
+        : (lastProposalRef.current[slide.id] || "");  // Hyväksytty ehdotus
+
+      const slideData = await convertToJSON(slide.label, slide.layout, proposalText);
+      if(slideData){
+        const nc={...collectedRef.current,[slide.id]:slideData};
+        collectedRef.current=nc;
       }
-      if(slideData){const nc={...collectedRef.current,[slide.id]:slideData};collectedRef.current=nc;setCollected(nc);}
-      pendingSlideRef.current=null;
       setStatuses(prev=>({...prev,[slide.id]:"done"}));
 
       if(editingSlide!==null){
@@ -393,61 +359,31 @@ Täytä KAIKKI kentät projektin OIKEILLA tiedoilla. Vain tämä dia.`}],phaseSy
       const next=idx+1;
       if(!isLast&&next<cur.length){
         setSlideIdxSync(next);
-        addMsg("assistant","✓ "+slide.label+" tallennettu. Siirrytään seuraavaan diaan.");
-        const hist=[...history(),{role:"user",content:userText},{role:"assistant",content:"✓ "+slide.label+" tallennettu."}];
-        setTimeout(()=>proposeSlide(next,hist,cur),300);
+        addMsg("assistant","✓ "+slide.label+" tallennettu. Siirrytään seuraavaan.");
+        setTimeout(()=>proposeSlide(next,cur),300);
       } else {
         addMsg("assistant","✓ "+slide.label+" tallennettu.");
         showReview(cur);
       }
       return;
     }
-    // Muutoksia
-    const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"..."}';
-    const hist=[...history(),{role:"user",content:userText}];
-    const r=await callAPI([...hist,{role:"user",content:
-      `[DIA ${idx+1}/${cur.length} — ${slide.label} — MUOKKAUS]
-Käyttäjä: "${userText}". Muokkaa, näytä uusi versio, kysy hyväksyntä.
-Tallenna: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]`}],phaseSystem());
-    const extracted=extractSlideData(r);
-    if(extracted[slide.id]) pendingSlideRef.current=extracted[slide.id];
+
+    // Muutoksia — AI muokkaa ja päivittää ehdotusta
+    const r=await callAPI([{role:"user",content:
+      `Dian "${slide.label}" aiempi ehdotus:\n---\n${lastProposalRef.current[slide.id]||""}\n---\n\nKäyttäjän muutospyyntö: "${userText}"\n\nTee muutokset ja näytä uusi versio. Kysy hyväksyntä.`}],
+      "VAIHE: Diojen sisältö.\n"+buildContext());
     const cleanText=strip(r);
-    lastProposalRef.current[slide.id]=cleanText; // Päivitä ehdotus muokkauksen jälkeen
+    lastProposalRef.current[slide.id]=cleanText;
     addMsg("assistant",cleanText);
   }
 
-  async function genSlideData(slide, discussedContent){
-    const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"...","bullets":["..."]}';
-    try{
-      const r=await callAPI([...history(),{role:"user",content:
-        `[JÄRJESTELMÄOHJE] Muunna alla oleva SOVITTU SISÄLTÖ JSON-muotoon.
-
-DIA: "${slide.label}" (layout: ${slide.layout})
-JSON-SKEEMA: ${schema}
-
-SOVITTU SISÄLTÖ JOKA PITÄÄ MUUNTAA:
----
-${(discussedContent||"").substring(0,2000)}
----
-
-KRIITTISET SÄÄNNÖT:
-1. Vastaa VAIN JSON-objektilla. Ei selityksiä, ei muuta tekstiä.
-2. ÄLÄ keksi uutta sisältöä. Käytä VAIN yllä olevan sovitun sisällön tietoja.
-3. Jokainen bullet/rivi/kortti yllä olevasta sisällöstä PITÄÄ olla mukana JSON:ssa.
-4. ÄLÄ muuta sanamuotoja, ÄLÄ tiivistä, ÄLÄ jätä mitään pois.`}],phaseSystem());
-      const m=r.match(/\{[\s\S]*\}/);
-      if(m) return JSON.parse(m[0]);
-    }catch(e){console.error("genSlideData:",e);}
-    return null;
-  }
-
-  // ═══ REVIEW — pelkkä lista, ei kuvia ═══
+  // ═══ REVIEW ═══
   function showReview(slidesArr){
     setScreenSync("review");
-    const slideList = (slidesArr||slidesRef.current).map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
+    const list=(slidesArr||slidesRef.current).map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
     setMsgs(p=>[...p,
       {type:"divider",content:"👀 Loppukatsaus"},
-      {role:"assistant",content:`Kaikki ${(slidesArr||slidesRef.current).length} diaa on käyty läpi!\n\n${slideList}\n\nHaluatko vielä muokata jotain diaa? Kirjoita esim. "muokkaa dia 2".\n\nKun olet tyytyväinen, kirjoita "valmis" niin generoin PowerPointin.`},
+      {role:"assistant",content:`Kaikki ${(slidesArr||slidesRef.current).length} diaa on käyty läpi!\n\n${list}\n\nHaluatko muokata jotain diaa? Kirjoita esim. "muokkaa dia 2".\nKun olet tyytyväinen, kirjoita "valmis".`},
     ]);
   }
 
@@ -458,9 +394,8 @@ KRIITTISET SÄÄNNÖT:
       const num=parseInt(editMatch[1])-1;
       if(num>=0&&num<slidesRef.current.length){
         const slide=slidesRef.current[num];
-        setEditingSlide(num); setScreenSync("planning"); setSlideIdxSync(num);
+        setEditingSlide(num);setScreenSync("planning");setSlideIdxSync(num);
         setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
-        pendingSlideRef.current=collectedRef.current[slide.id]||null;
         addDivider("✏️ Muokataan: Dia "+(num+1)+" — "+slide.label);
         addMsg("assistant","Mitä haluat muuttaa diassa \""+slide.label+"\"?\nKirjoita muutokset tai \"en mitään\" palataksesi.");
         return;
@@ -469,7 +404,7 @@ KRIITTISET SÄÄNNÖT:
     if(["valmis","generoi","lataa","tee","luo"].some(w=>lower.includes(w))){
       doDownload(); return;
     }
-    addMsg("assistant","Kirjoita \"valmis\" generoidakseni PowerPointin, tai \"muokkaa dia X\" muokataksesi diaa.");
+    addMsg("assistant","Kirjoita \"valmis\" tai \"muokkaa dia X\".");
   }
 
   async function doDownload(){
@@ -482,28 +417,26 @@ KRIITTISET SÄÄNNÖT:
         method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
         body:JSON.stringify({slideData:collectedRef.current,slideStructure:slidesRef.current}),
       });
-      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||"HTTP "+r.status);}
+      if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||"HTTP "+r.status);
       const blob=await r.blob();
       const url=URL.createObjectURL(blob);
       Object.assign(document.createElement("a"),{href:url,download:"projektisuunnitelma.pptx"}).click();
       URL.revokeObjectURL(url);
-      addMsg("assistant","✅ PowerPoint ladattu onnistuneesti!");
-    }catch(e){
-      addMsg("assistant","⚠️ Virhe: "+e.message);
-    }
+      addMsg("assistant","✅ PowerPoint ladattu!");
+    }catch(e){addMsg("assistant","⚠️ Virhe: "+e.message);}
     setBuilding(false);
   }
 
   // ═══ TIEDOSTOT ═══
   async function readFile(f){
     if(f.name.match(/\.(txt|md|csv|json)$/i)){const t=await f.text().catch(()=>"");return{name:f.name,content:"["+f.name+"]\n"+t.substring(0,5000)};}
-    const mimeMap={pdf:"application/pdf",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png"};
-    const ext=f.name.split(".").pop().toLowerCase(); const mimeType=mimeMap[ext];
-    if(mimeType){try{
-      const buf=await f.arrayBuffer();const bytes=new Uint8Array(buf);let binary="";
-      for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-      const r=await fetch(API+"/api/extract-file",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({base64:btoa(binary),mimeType,fileName:f.name})});
-      const d=await r.json();return{name:f.name,content:"["+f.name+(d.text?" — sisältö:]\n"+d.text:": "+(d.error||"virhe")+"]")};
+    const mm={pdf:"application/pdf",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png"};
+    const mt=mm[f.name.split(".").pop().toLowerCase()];
+    if(mt){try{
+      const buf=await f.arrayBuffer();const bytes=new Uint8Array(buf);let bin="";
+      for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));
+      const r=await fetch(API+"/api/extract-file",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({base64:btoa(bin),mimeType:mt,fileName:f.name})});
+      const d=await r.json();return{name:f.name,content:"["+f.name+(d.text?" — sisältö:]\n"+d.text:": virhe]")};
     }catch(e){return{name:f.name,content:"["+f.name+": virhe]"};}}
     return{name:f.name,content:"["+f.name+" — ei tuettu]"};
   }
@@ -551,7 +484,6 @@ KRIITTISET SÄÄNNÖT:
   const canSend=!busy&&(input.trim().length>0||attachments.length>0);
   const doneCount=Object.values(statuses).filter(s=>s==="done").length;
   const showSidebar=slides.length>0&&["planning","review","ready"].includes(screen);
-  const currentSlide=slides[slideIdx];
 
   if(!authed)return(
     <div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',sans-serif"}}>
@@ -573,7 +505,7 @@ KRIITTISET SÄÄNNÖT:
         <h1 style={{color:G.white,fontSize:24,fontWeight:700,margin:"0 0 8px"}}>Projektisuunnitelma-agentti</h1>
         <p style={{color:G.codeBlue,fontSize:14,lineHeight:1.7,margin:"0 0 32px"}}>Rakennetaan projektisuunnitelmasi yhdessä, dia kerrallaan.</p>
         <div style={{background:"rgba(255,255,255,0.05)",borderRadius:14,padding:20,marginBottom:32,textAlign:"left"}}>
-          {[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit, tarjoan vaihtoehtoja"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]].map(([i,t,d])=>
+          {[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]].map(([i,t,d])=>
             <div key={t} style={{display:"flex",gap:12,marginBottom:14}}><span style={{fontSize:18}}>{i}</span><div><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t}</div><div style={{color:G.grey,fontSize:12}}>{d}</div></div></div>
           )}
         </div>
@@ -587,13 +519,8 @@ KRIITTISET SÄÄNNÖT:
       {showSidebar&&(
         <div style={{width:200,background:G.white,borderRight:"1px solid "+G.silver,padding:"14px 12px",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
           <div style={{color:G.grey,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Diat {doneCount}/{slides.length}</div>
-          {slides.map((s)=><Pill key={s.id} slide={s} status={statuses[s.id]||"pending"} />)}
-          {screen==="ready"&&(
-            <button onClick={doDownload} disabled={building}
-              style={{background:building?G.grey:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:13,fontWeight:700,cursor:building?"not-allowed":"pointer",marginTop:16}}>
-              {building?"⏳ ...":"🚀 Lataa uudelleen"}
-            </button>
-          )}
+          {slides.map(s=><Pill key={s.id} slide={s} status={statuses[s.id]||"pending"} />)}
+          {screen==="ready"&&<button onClick={doDownload} disabled={building} style={{background:building?G.grey:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:13,fontWeight:700,cursor:building?"not-allowed":"pointer",marginTop:16}}>{building?"⏳...":"🚀 Lataa uudelleen"}</button>}
         </div>
       )}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
@@ -602,13 +529,7 @@ KRIITTISET SÄÄNNÖT:
           <div>
             <div style={{color:G.white,fontWeight:600,fontSize:13}}>Projektisuunnitelma-agentti</div>
             <div style={{color:G.codeBlue,fontSize:11}}>
-              {screen==="interview"?"💬 Vaihe 1 — Haastattelu"
-               :screen==="focus"?"🎯 Vaihe 2 — Fokus"
-               :screen==="insights"?"🔍 Vaihe 3 — Havainnot"+(focusType?": "+focusType:"")
-               :screen==="structure"?"📐 Vaihe 4 — Diarakenne"
-               :screen==="planning"&&slides.length>0?"📄 Vaihe 5 — Dia "+(slideIdx+1)+"/"+slides.length+(currentSlide?" — "+currentSlide.label:"")
-               :screen==="review"?"👀 Loppukatsaus"
-               :screen==="ready"?"✅ Valmis":""}
+              {screen==="interview"?"💬 Vaihe 1 — Haastattelu":screen==="focus"?"🎯 Vaihe 2 — Fokus":screen==="insights"?"🔍 Vaihe 3 — Havainnot"+(focusType?": "+focusType:""):screen==="structure"?"📐 Vaihe 4 — Diarakenne":screen==="planning"&&slides.length>0?"📄 Vaihe 5 — Dia "+(slideIdx+1)+"/"+slides.length+(slides[slideIdx]?" — "+slides[slideIdx].label:""):screen==="review"?"👀 Loppukatsaus":screen==="ready"?"✅ Valmis":""}
             </div>
           </div>
         </div>
@@ -616,17 +537,12 @@ KRIITTISET SÄÄNNÖT:
           onDragOver={e=>{e.preventDefault();setDragOver(true);}}
           onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragOver(false);}}
           onDrop={onDrop}>
-          {dragOver&&<div style={{position:"absolute",inset:0,background:"rgba(27,108,168,0.1)",border:"2px dashed "+G.digitalBlue,borderRadius:8,zIndex:10,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-            <div style={{background:G.white,borderRadius:12,padding:"24px 40px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📂</div><div style={{color:G.digitalBlue,fontWeight:600}}>Pudota tiedostot tähän</div></div>
-          </div>}
+          {dragOver&&<div style={{position:"absolute",inset:0,background:"rgba(27,108,168,0.1)",border:"2px dashed "+G.digitalBlue,borderRadius:8,zIndex:10,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><div style={{background:G.white,borderRadius:12,padding:"24px 40px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📂</div><div style={{color:G.digitalBlue,fontWeight:600}}>Pudota tiedostot tähän</div></div></div>}
           {msgs.map((m,i)=>{
             if(m.type==="divider")return<Divider key={i} text={m.content}/>;
             return<Bubble key={i} role={m.role} content={m.content}/>;
           })}
-          {busy&&<div style={{display:"flex",gap:10}}>
-            <div style={{width:32,height:32,borderRadius:"50%",background:G.deepBlue,color:G.orange,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12}}>G</div>
-            <div style={{background:G.white,borderRadius:"3px 14px 14px 14px",padding:"12px 16px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><span style={{color:G.grey,letterSpacing:6,fontSize:16}}>● ● ●</span></div>
-          </div>}
+          {busy&&<div style={{display:"flex",gap:10}}><div style={{width:32,height:32,borderRadius:"50%",background:G.deepBlue,color:G.orange,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12}}>G</div><div style={{background:G.white,borderRadius:"3px 14px 14px 14px",padding:"12px 16px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><span style={{color:G.grey,letterSpacing:6,fontSize:16}}>● ● ●</span></div></div>}
           <div ref={bottom}/>
         </div>
         {attachments.length>0&&<div style={{background:G.white,borderTop:"1px solid "+G.silver,padding:"8px 16px",display:"flex",flexWrap:"wrap",gap:6}}>

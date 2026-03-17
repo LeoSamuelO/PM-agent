@@ -2,352 +2,172 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const Anthropic = require("@anthropic-ai/sdk");
-const pptxgen = require("pptxgenjs");
 const path = require("path");
 const fs = require("fs");
+const { execFile } = require("child_process");
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-// ── Auth middleware ───────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────
 const PASSWORD = process.env.APP_PASSWORD || "AgenttiTestaus123";
+const sessions = new Map();
+function generateToken() { return require("crypto").randomBytes(32).toString("hex"); }
+function isValidToken(token) {
+  const exp = sessions.get(token);
+  if (!exp) return false;
+  if (Date.now() > exp) { sessions.delete(token); return false; }
+  return true;
+}
 app.use((req, res, next) => {
-  if (req.path === "/health") return next();
-  if (req.path === "/api/login") return next();
-  const token = req.headers["x-session-token"];
-  if (!token || !isValidToken(token)) return res.status(401).json({ error: "Istunto vanhentunut" });
+  if (req.path === "/health" || req.path === "/api/login") return next();
+  if (!isValidToken(req.headers["x-session-token"])) return res.status(401).json({ error: "Istunto vanhentunut" });
   next();
 });
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── Session-tokenin hallinta ──────────────────────────────────────
-const sessions = new Map();
-
-function generateToken() {
-  return require("crypto").randomBytes(32).toString("hex");
-}
-
-function isValidToken(token) {
-  const expiry = sessions.get(token);
-  if (!expiry) return false;
-  if (Date.now() > expiry) { sessions.delete(token); return false; }
-  return true;
-}
-
-// ── Login ─────────────────────────────────────────────────────────
 app.post("/api/login", (req, res) => {
-  const { password } = req.body;
-  if (password !== PASSWORD) return res.status(401).json({ error: "Väärä salasana" });
+  if (req.body.password !== PASSWORD) return res.status(401).json({ error: "Väärä salasana" });
   const token = generateToken();
-  sessions.set(token, Date.now() + 8 * 60 * 60 * 1000);
+  sessions.set(token, Date.now() + 8 * 3600000);
   res.json({ token });
 });
 
-// ── Health ────────────────────────────────────────────────────────
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", message: "Gofore agentti toimii!" });
-});
+app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 // ── File extract ──────────────────────────────────────────────────
 app.post("/api/extract-file", async (req, res) => {
   const { base64, mimeType, fileName } = req.body;
   if (!base64 || !mimeType) return res.status(400).json({ error: "base64/mimeType puuttuu" });
   try {
-    const isImage = mimeType.startsWith("image/");
-    const isPdf = mimeType === "application/pdf";
-    if (!isImage && !isPdf) {
-      return res.status(400).json({ error: "Tuetut tiedostotyypit: PDF ja kuvat" });
-    }
-    const contentBlock = isPdf
+    const block = mimeType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
       : { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } };
-
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [{
-        role: "user",
-        content: [
-          contentBlock,
-          { type: "text", text: "Lue tämä tiedosto (" + fileName + ") tarkasti. Tiivistä kaikki projektisuunnittelun kannalta oleellinen tieto selkeästi suomeksi. Mainitse kaikki: tavoitteet, aikataulu, osapuolet, resurssit, rajoitteet, riskit, riippuvuudet, työpaketit. Älä keksi mitään — kirjoita vain mitä tiedostossa oikeasti lukee." }
-        ]
-      }]
+    const r = await client.messages.create({
+      model: "claude-sonnet-4-20250514", max_tokens: 2000,
+      messages: [{ role: "user", content: [block, { type: "text", text: "Lue tiedosto (" + fileName + "). Tiivistä oleellinen projektitieto suomeksi." }] }]
     });
-
-    const text = response.content.find(b => b.type === "text")?.text || "";
-    res.json({ text });
-  } catch (err) {
-    console.error("Tiedostovirhe:", err.message);
-    res.status(500).json({ error: "Tiedoston luku epäonnistui: " + err.message });
-  }
+    res.json({ text: r.content.find(b => b.type === "text")?.text || "" });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Chat ──────────────────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   const { messages, system, useSearch } = req.body;
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: "messages puuttuu" });
-  }
-
+  if (!messages?.length) return res.status(400).json({ error: "messages puuttuu" });
   try {
-    const params = {
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
-      system: system || "Olet kokenut projektikonsultti. Kommunikoi aina suomeksi.",
-      messages,
-    };
-
-    if (useSearch) {
-      params.tools = [{ type: "web_search_20250305", name: "web_search" }];
-    }
-
-    const response = await client.messages.create(params);
-
-    const text = response.content
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n");
-
-    res.json({ text });
-  } catch (err) {
-    console.error("Claude API virhe:", err.message);
-    res.status(500).json({ error: "API-kutsu epäonnistui: " + err.message });
-  }
+    const params = { model: "claude-sonnet-4-20250514", max_tokens: 4000, system: system || "Olet projektikonsultti. Suomeksi.", messages };
+    if (useSearch) params.tools = [{ type: "web_search_20250305", name: "web_search" }];
+    const r = await client.messages.create(params);
+    res.json({ text: r.content.filter(b => b.type === "text").map(b => b.text).join("\n") });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── PPTX ──────────────────────────────────────────────────────────
+// ── PPTX — Python build_pptx.py + Gofore-template (fallback: pptxgenjs) ──
 app.post("/api/build-pptx", async (req, res) => {
   const { slideData, slideStructure } = req.body;
-  if (!slideData) return res.status(400).json({ error: "slideData puuttuu" });
-  if (!slideStructure || !Array.isArray(slideStructure) || slideStructure.length === 0) {
-    return res.status(400).json({ error: "slideStructure puuttuu tai on tyhjä" });
-  }
+  if (!slideData || !slideStructure?.length) return res.status(400).json({ error: "Data puuttuu" });
 
-  // Validoi: varmista että jokaisella dialla on dataa
-  const warnings = [];
+  // Oletusarvot puuttuville
   for (const sd of slideStructure) {
-    if (!slideData[sd.id]) {
-      warnings.push(`Dia "${sd.label}" (${sd.id}) — ei dataa, käytetään oletusarvoja`);
-      // Anna oletusarvot tyhjille dioille
-      slideData[sd.id] = getDefaultSlideData(sd);
-    }
-  }
-  if (warnings.length > 0) {
-    console.warn("PPTX-varoitukset:", warnings);
+    if (!slideData[sd.id]) slideData[sd.id] = getDefault(sd);
   }
 
-  try {
-    const filePath = await buildPPTX(slideData, slideStructure);
-    res.download(filePath, "projektisuunnitelma.pptx", (err) => {
-      if (err) console.error("Latausvirhe:", err);
-      fs.unlink(filePath, () => {});
-    });
-  } catch (err) {
-    console.error("PPTX-virhe:", err.message, err.stack);
-    res.status(500).json({ error: "PPTX-generointi epäonnistui: " + err.message });
-  }
-});
-
-/** Oletusarvot tyhjille dioille, jotta ne eivät ole aivan tyhjiä */
-function getDefaultSlideData(slideDef) {
-  switch (slideDef.layout) {
-    case "title":
-      return { title: slideDef.label || "Projektisuunnitelma", tagline: "", meta: "" };
-    case "bullets":
-      return { heading: slideDef.label || "", bullets: ["(Sisältö puuttuu)"] };
-    case "table":
-      return { heading: slideDef.label || "", columns: ["Tieto"], rows: [["(Sisältö puuttuu)"]] };
-    case "cards":
-      return { heading: slideDef.label || "", cards: [{ icon: "📌", title: "(Sisältö puuttuu)", desc: "", level: "medium" }] };
-    case "two-col":
-      return { heading: slideDef.label || "", left: { title: "", items: ["(Sisältö puuttuu)"] }, right: { title: "", items: [] } };
-    case "gantt":
-      return { heading: slideDef.label || "Aikataulu", totalWeeks: 8, phases: [{ name: "(Vaihe puuttuu)", start: 1, end: 4, critical: false }] };
-    default:
-      return { heading: slideDef.label || "", bullets: ["(Sisältö puuttuu)"] };
-  }
-}
-
-// ── PPTX-rakentaja ────────────────────────────────────────────────
-async function buildPPTX(data, slideStructure) {
-  const pres = new pptxgen();
-  pres.layout = "LAYOUT_WIDE";
-
-  const C = {
-    deepBlue: "0C2340", digitalBlue: "1B6CA8", codeBlue: "5BA4CF",
-    orange: "E8521A", mint: "3BBFAD", white: "FFFFFF",
-    grey: "8C9BAA", silver: "D3D9DF", light: "EEF1F3",
-    red: "C0392B", yellow: "E67E22", green: "27AE60",
-  };
-  const F = "Calibri";
-  const mkS = () => ({ type: "outer", color: "000000", blur: 6, offset: 2, angle: 135, opacity: 0.10 });
-  const hdr = (s, title) => {
-    s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 13.3, h: 0.07, fill: { color: C.orange }, line: { color: C.orange } });
-    s.addText(title, { x: 0.5, y: 0.15, w: 11, h: 0.5, fontSize: 24, fontFace: F, bold: true, color: C.deepBlue, margin: 0 });
-  };
-
-  // Varmista että kansi on aina ensimmäinen dia
-  const hasTitle = slideStructure.length > 0 && slideStructure[0].layout === "title";
-  if (!hasTitle) {
-    const kansiData = data.kansi || { title: "Projektisuunnitelma", tagline: "", meta: new Date().toLocaleDateString("fi-FI") };
-    buildTitleSlide(pres, kansiData, C, F);
-    console.log("ℹ️ Kansi-dia lisätty automaattisesti");
-  }
-
-  for (const slideDef of slideStructure) {
-    const d = data[slideDef.id] || {};
-    switch (slideDef.layout) {
-      case "title":    buildTitleSlide(pres, d, C, F); break;
-      case "gantt":    buildGanttSlide(pres, d, slideDef, C, F, hdr); break;
-      case "table":    buildTableSlide(pres, d, slideDef, C, F, hdr); break;
-      case "cards":    buildCardsSlide(pres, d, slideDef, C, F, hdr, mkS); break;
-      case "two-col":  buildTwoColSlide(pres, d, slideDef, C, F, hdr, mkS); break;
-      case "bullets":
-      default:         buildBulletsSlide(pres, d, slideDef, C, F, hdr); break;
-    }
-  }
-
-  // End slide
-  {
-    const s = pres.addSlide();
-    s.background = { color: C.deepBlue };
-    s.addShape(pres.shapes.OVAL, { x: 9.5, y: -1.5, w: 5.5, h: 5.5, fill: { color: C.digitalBlue, transparency: 75 }, line: { color: C.digitalBlue, transparency: 75 } });
-    s.addShape(pres.shapes.OVAL, { x: 10.6, y: -0.2, w: 3.0, h: 3.0, fill: { color: C.mint, transparency: 80 }, line: { color: C.mint, transparency: 80 } });
-    s.addText("Pioneering\nan ethical\ndigital world.", { x: 0.8, y: 1.8, w: 8, h: 2.8, fontSize: 34, fontFace: F, bold: true, color: C.white, lineSpacingMultiple: 1.2, margin: 0 });
-    s.addText("GOFORE", { x: 0.8, y: 6.85, w: 3, h: 0.35, fontSize: 12, fontFace: F, bold: true, color: C.orange, charSpacing: 5, margin: 0 });
-  }
-
+  const payload = JSON.stringify({ slideData, slideStructure });
   const outPath = path.join(__dirname, "pptx_" + Date.now() + ".pptx");
-  await pres.writeFile({ fileName: outPath });
-  return outPath;
-}
+  const script = path.join(__dirname, "build_pptx.py");
 
-function buildTitleSlide(pres, d, C, F) {
-  const s = pres.addSlide();
-  s.background = { color: C.deepBlue };
-  s.addShape(pres.shapes.OVAL, { x: 9.8, y: -1.2, w: 4.5, h: 4.5, fill: { color: C.digitalBlue, transparency: 70 }, line: { color: C.digitalBlue, transparency: 70 } });
-  s.addShape(pres.shapes.OVAL, { x: 10.8, y: -0.3, w: 2.8, h: 2.8, fill: { color: C.mint, transparency: 78 }, line: { color: C.mint, transparency: 78 } });
-  s.addShape(pres.shapes.RECTANGLE, { x: 0.6, y: 1.5, w: 0.08, h: 3.0, fill: { color: C.orange }, line: { color: C.orange } });
-  s.addText(d.title || "Projektisuunnitelma", { x: 0.9, y: 1.4, w: 8.5, h: 2.2, fontSize: 36, fontFace: F, bold: true, color: C.white, lineSpacingMultiple: 1.15, margin: 0 });
-  s.addText(d.tagline || "", { x: 0.9, y: 3.75, w: 9.0, h: 0.5, fontSize: 15, fontFace: F, color: C.orange, margin: 0 });
-  s.addText(d.meta || "", { x: 0.9, y: 4.35, w: 9.5, h: 0.32, fontSize: 12, fontFace: F, color: C.silver, margin: 0 });
-  if (d.projectLead) s.addText("Projektin johtaja: " + d.projectLead, { x: 0.9, y: 4.72, w: 9.5, h: 0.32, fontSize: 12, fontFace: F, color: C.silver, margin: 0 });
-  s.addText("GOFORE", { x: 0.6, y: 6.9, w: 3, h: 0.35, fontSize: 12, fontFace: F, bold: true, color: C.orange, charSpacing: 5, margin: 0 });
-}
-
-function buildBulletsSlide(pres, d, def, C, F, hdr) {
-  const s = pres.addSlide();
-  s.background = { color: C.white };
-  hdr(s, d.heading || def.label || "");
-  const bullets = d.bullets || [];
-  if (bullets.length === 0) return; // Ei tyhjiä rivejä
-  bullets.forEach((b, i) => {
-    s.addShape(pres.shapes.RECTANGLE, { x: 0.5, y: 0.88 + i * 0.7, w: 0.06, h: 0.42, fill: { color: C.orange }, line: { color: C.orange } });
-    s.addText(b, { x: 0.75, y: 0.88 + i * 0.7, w: 12.0, h: 0.56, fontSize: 13, fontFace: F, color: C.deepBlue, valign: "middle", margin: 0 });
-  });
-  if (d.note) s.addText(d.note, { x: 0.5, y: 6.6, w: 12.3, h: 0.35, fontSize: 11, fontFace: F, color: C.grey, italic: true, margin: 0 });
-}
-
-function buildTableSlide(pres, d, def, C, F, hdr) {
-  const s = pres.addSlide();
-  s.background = { color: C.white };
-  hdr(s, d.heading || def.label || "");
-  const cols = d.columns || [];
-  const rows = d.rows || [];
-  if (!cols.length) return;
-  const tw = 12.3, tl = 0.5, tt = 0.82, rh = 0.48, hh = 0.38;
-  const cw = tw / cols.length;
-  cols.forEach((c, ci) => {
-    s.addShape(pres.shapes.RECTANGLE, { x: tl + ci * cw, y: tt, w: cw, h: hh, fill: { color: C.deepBlue }, line: { color: C.deepBlue } });
-    s.addText(c, { x: tl + ci * cw + 0.06, y: tt, w: cw - 0.1, h: hh, fontSize: 11, fontFace: F, bold: true, color: C.white, valign: "middle", margin: 0 });
-  });
-  rows.forEach((row, ri) => {
-    const bg = ri % 2 === 0 ? C.white : C.light;
-    const y = tt + hh + ri * rh;
-    row.forEach((cell, ci) => {
-      if (ci >= cols.length) return; // Älä ylivuoda sarakemäärää
-      s.addShape(pres.shapes.RECTANGLE, { x: tl + ci * cw, y, w: cw, h: rh, fill: { color: bg }, line: { color: C.silver } });
-      s.addText(String(cell || ""), { x: tl + ci * cw + 0.06, y, w: cw - 0.1, h: rh, fontSize: 11, fontFace: F, color: C.deepBlue, valign: "middle", margin: 0 });
-    });
-  });
-}
-
-function buildGanttSlide(pres, d, def, C, F, hdr) {
-  const s = pres.addSlide();
-  s.background = { color: C.white };
-  hdr(s, d.heading || def.label || "Aikataulu");
-  const totalWeeks = d.totalWeeks || 8;
-  const frozenWeek = d.frozenWeek || null;
-  const phases = d.phases || [];
-  if (phases.length === 0) return;
-  const wcw = (12.3 - 3.2) / totalWeeks;
-  const tl = 0.4, tt = 0.82, pcw = 3.2, rh = 0.48, hh = 0.36;
-  s.addShape(pres.shapes.RECTANGLE, { x: tl, y: tt, w: pcw, h: hh, fill: { color: C.deepBlue }, line: { color: C.deepBlue } });
-  s.addText("Vaihe", { x: tl + 0.1, y: tt, w: pcw, h: hh, fontSize: 11, fontFace: F, bold: true, color: C.white, valign: "middle", margin: 0 });
-  for (let w = 0; w < totalWeeks; w++) {
-    const x = tl + pcw + w * wcw;
-    const frozen = frozenWeek && w + 1 === frozenWeek;
-    s.addShape(pres.shapes.RECTANGLE, { x, y: tt, w: wcw, h: hh, fill: { color: frozen ? C.red : C.deepBlue }, line: { color: C.deepBlue } });
-    s.addText("Vk" + (w+1) + (frozen ? "\n🔒" : ""), { x, y: tt, w: wcw, h: hh, fontSize: frozen ? 7 : 8, fontFace: F, bold: true, color: C.white, align: "center", valign: "middle", margin: 0 });
-  }
-  phases.forEach((ph, ri) => {
-    const y = tt + hh + ri * rh;
-    const rowBg = ri % 2 === 0 ? C.white : C.light;
-    s.addShape(pres.shapes.RECTANGLE, { x: tl, y, w: pcw, h: rh, fill: { color: ph.critical ? "FFF2EC" : rowBg }, line: { color: C.silver } });
-    s.addText((ph.critical ? "⬥ " : "") + (ph.name || ""), { x: tl + 0.1, y, w: pcw - 0.15, h: rh, fontSize: 10, fontFace: F, bold: ph.critical, color: ph.critical ? C.orange : C.deepBlue, valign: "middle", margin: 0 });
-    for (let w = 0; w < totalWeeks; w++) {
-      const x = tl + pcw + w * wcw;
-      const active = w + 1 >= ph.start && w + 1 <= ph.end;
-      const frozen = frozenWeek && w + 1 === frozenWeek;
-      const fill = active ? (ph.critical ? C.orange : (w % 2 === 0 ? C.digitalBlue : C.mint)) : (frozen ? "FFE0D6" : rowBg);
-      s.addShape(pres.shapes.RECTANGLE, { x, y, w: wcw, h: rh, fill: { color: fill }, line: { color: C.silver } });
+  // Yritä Python + Gofore-template ensin
+  if (fs.existsSync(script)) {
+    try {
+      await new Promise((ok, fail) => {
+        execFile("python3", [script, payload, outPath], { maxBuffer: 10*1024*1024, timeout: 30000 },
+          (err, stdout, stderr) => err ? fail(new Error(stderr || err.message)) : ok(stdout));
+      });
+      if (fs.existsSync(outPath)) {
+        return res.download(outPath, "projektisuunnitelma.pptx", () => fs.unlink(outPath, () => {}));
+      }
+    } catch (e) {
+      console.error("Python PPTX-virhe:", e.message);
+      fs.unlink(outPath, () => {});
     }
-  });
-}
+  }
 
-function buildCardsSlide(pres, d, def, C, F, hdr, mkS) {
-  const s = pres.addSlide();
-  s.background = { color: C.white };
-  hdr(s, d.heading || def.label || "");
-  const cards = d.cards || [];
-  if (cards.length === 0) return;
-  const levelColor = { high: C.red, medium: C.yellow, low: C.green, korkea: C.red, keski: C.yellow, matala: C.green };
-  const cols = Math.min(cards.length, 3);
-  const cw = 12.3 / cols;
-  cards.forEach((card, i) => {
-    const col = i % cols, row = Math.floor(i / cols);
-    const x = 0.5 + col * cw, y = 1.0 + row * 2.7;
-    const cc = levelColor[String(card.level || "").toLowerCase()] || C.digitalBlue;
-    s.addShape(pres.shapes.RECTANGLE, { x, y, w: cw - 0.2, h: 2.4, fill: { color: C.white }, line: { color: C.silver }, shadow: mkS() });
-    s.addShape(pres.shapes.RECTANGLE, { x, y, w: cw - 0.2, h: 0.06, fill: { color: cc }, line: { color: cc } });
-    s.addText(card.icon || "📌", { x: x + 0.1, y: y + 0.1, w: 0.5, h: 0.5, fontSize: 22, margin: 0 });
-    s.addText(card.title || "", { x: x + 0.65, y: y + 0.1, w: cw - 1.0, h: 0.44, fontSize: 13, fontFace: F, bold: true, color: C.deepBlue, margin: 0 });
-    s.addText(card.desc || "", { x: x + 0.1, y: y + 0.62, w: cw - 0.4, h: 1.6, fontSize: 11, fontFace: F, color: C.grey, lineSpacingMultiple: 1.3, margin: 0 });
-  });
-}
-
-function buildTwoColSlide(pres, d, def, C, F, hdr, mkS) {
-  const s = pres.addSlide();
-  s.background = { color: C.white };
-  hdr(s, d.heading || def.label || "");
-  const left = d.left || {};
-  const right = d.right || {};
-  [left, right].forEach((col, ci) => {
-    const x = ci === 0 ? 0.5 : 6.9;
-    s.addShape(pres.shapes.RECTANGLE, { x, y: 0.82, w: 6.0, h: 0.38, fill: { color: ci === 0 ? C.deepBlue : C.digitalBlue }, line: { color: C.deepBlue } });
-    s.addText(col.title || "", { x: x + 0.1, y: 0.82, w: 5.8, h: 0.38, fontSize: 12, fontFace: F, bold: true, color: C.white, valign: "middle", margin: 0 });
-    (col.items || []).forEach((item, ii) => {
-      s.addShape(pres.shapes.OVAL, { x: x + 0.12, y: 1.34 + ii * 0.62, w: 0.2, h: 0.2, fill: { color: ci === 0 ? C.orange : C.mint }, line: { color: ci === 0 ? C.orange : C.mint } });
-      s.addText(item, { x: x + 0.42, y: 1.28 + ii * 0.62, w: 5.4, h: 0.52, fontSize: 12, fontFace: F, color: C.deepBlue, valign: "middle", margin: 0 });
-    });
-  });
-}
-
-// ── Start ─────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`✅ Gofore agentti käynnissä portissa ${PORT}`);
-  console.log(`   Testaa: http://localhost:${PORT}/health`);
+  // Fallback: pptxgenjs
+  try {
+    const fbPath = await buildFallbackPPTX(slideData, slideStructure);
+    res.download(fbPath, "projektisuunnitelma.pptx", () => fs.unlink(fbPath, () => {}));
+  } catch (err) {
+    res.status(500).json({ error: "PPTX epäonnistui: " + err.message });
+  }
 });
+
+function getDefault(sd) {
+  const m = { title:{title:sd.label||"Projekti",tagline:"",meta:""}, bullets:{heading:sd.label||"",bullets:["(Puuttuu)"]},
+    table:{heading:sd.label||"",columns:["Tieto"],rows:[["(Puuttuu)"]]}, cards:{heading:sd.label||"",cards:[{icon:"📌",title:"(Puuttuu)",desc:"",level:"medium"}]},
+    "two-col":{heading:sd.label||"",left:{title:"",items:["(Puuttuu)"]},right:{title:"",items:[]}},
+    gantt:{heading:sd.label||"Aikataulu",totalWeeks:8,phases:[{name:"(Puuttuu)",start:1,end:4,critical:false}]} };
+  return m[sd.layout] || m.bullets;
+}
+
+async function buildFallbackPPTX(data, structure) {
+  const pptxgen = require("pptxgenjs");
+  const pres = new pptxgen(); pres.layout = "LAYOUT_WIDE";
+  const C = {deepBlue:"0C2340",digitalBlue:"1B6CA8",orange:"E8521A",mint:"3BBFAD",white:"FFFFFF",grey:"8C9BAA",silver:"D3D9DF",light:"EEF1F3"};
+  const F = "Calibri";
+  const hdr = (s,t) => { s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:13.3,h:0.07,fill:{color:C.orange}}); s.addText(t,{x:0.5,y:0.15,w:11,h:0.5,fontSize:24,fontFace:F,bold:true,color:C.deepBlue,margin:0}); };
+
+  for (const sd of structure) {
+    const d = data[sd.id] || {};
+    if (sd.layout==="title") {
+      const s=pres.addSlide(); s.background={color:C.deepBlue};
+      s.addText(d.title||"Projekti",{x:0.9,y:1.4,w:8.5,h:2.2,fontSize:36,fontFace:F,bold:true,color:C.white,margin:0});
+      s.addText(d.tagline||"",{x:0.9,y:3.75,w:9,h:0.5,fontSize:15,fontFace:F,color:C.orange,margin:0});
+      s.addText(d.meta||"",{x:0.9,y:4.35,w:9.5,h:0.32,fontSize:12,fontFace:F,color:C.silver,margin:0});
+      if(d.projectLead) s.addText("PM: "+d.projectLead,{x:0.9,y:4.72,w:9.5,h:0.32,fontSize:12,fontFace:F,color:C.silver,margin:0});
+      s.addText("GOFORE",{x:0.6,y:6.9,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
+    } else if (sd.layout==="gantt") {
+      const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
+      const tw=d.totalWeeks||8,phases=d.phases||[],wcw=(12.3-3.2)/tw,tl=0.4,tt=0.82,pcw=3.2,rh=0.48,hh=0.36;
+      s.addShape(pres.shapes.RECTANGLE,{x:tl,y:tt,w:pcw,h:hh,fill:{color:C.deepBlue}});
+      s.addText("Vaihe",{x:tl+0.1,y:tt,w:pcw,h:hh,fontSize:11,fontFace:F,bold:true,color:C.white,valign:"middle",margin:0});
+      for(let w=0;w<tw;w++){const x=tl+pcw+w*wcw;s.addShape(pres.shapes.RECTANGLE,{x,y:tt,w:wcw,h:hh,fill:{color:C.deepBlue}});s.addText("Vk"+(w+1),{x,y:tt,w:wcw,h:hh,fontSize:8,fontFace:F,bold:true,color:C.white,align:"center",valign:"middle",margin:0});}
+      phases.forEach((ph,ri)=>{const y=tt+hh+ri*rh,bg=ri%2===0?C.white:C.light;
+        s.addShape(pres.shapes.RECTANGLE,{x:tl,y,w:pcw,h:rh,fill:{color:bg},line:{color:C.silver}});
+        s.addText((ph.critical?"⬥ ":"")+(ph.name||""),{x:tl+0.1,y,w:pcw-0.15,h:rh,fontSize:10,fontFace:F,bold:ph.critical,color:ph.critical?C.orange:C.deepBlue,valign:"middle",margin:0});
+        for(let w=0;w<tw;w++){const x=tl+pcw+w*wcw,active=w+1>=ph.start&&w+1<=ph.end;s.addShape(pres.shapes.RECTANGLE,{x,y,w:wcw,h:rh,fill:{color:active?(ph.critical?C.orange:C.digitalBlue):bg},line:{color:C.silver}});}});
+    } else if (sd.layout==="table") {
+      const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
+      const cols=d.columns||[],rows=d.rows||[];if(!cols.length)continue;
+      const tw=12.3,tl=0.5,tt=0.82,rh=0.48,hh=0.38,cw=tw/cols.length;
+      cols.forEach((c,ci)=>{s.addShape(pres.shapes.RECTANGLE,{x:tl+ci*cw,y:tt,w:cw,h:hh,fill:{color:C.deepBlue}});s.addText(c,{x:tl+ci*cw+0.06,y:tt,w:cw-0.1,h:hh,fontSize:11,fontFace:F,bold:true,color:C.white,valign:"middle",margin:0});});
+      rows.forEach((row,ri)=>{const bg=ri%2===0?C.white:C.light,y=tt+hh+ri*rh;(row||[]).forEach((cell,ci)=>{if(ci>=cols.length)return;s.addShape(pres.shapes.RECTANGLE,{x:tl+ci*cw,y,w:cw,h:rh,fill:{color:bg},line:{color:C.silver}});s.addText(String(cell||""),{x:tl+ci*cw+0.06,y,w:cw-0.1,h:rh,fontSize:11,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});});
+    } else if (sd.layout==="cards") {
+      const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
+      const cards=d.cards||[],lc={high:"C0392B",medium:"E67E22",low:"27AE60"},nc=Math.min(cards.length,3),cw=12.3/nc;
+      cards.forEach((c,i)=>{const x=0.5+i*cw,cc=lc[String(c.level||"").toLowerCase()]||C.digitalBlue;
+        s.addShape(pres.shapes.RECTANGLE,{x,y:1,w:cw-0.2,h:2.4,fill:{color:C.white},line:{color:C.silver}});
+        s.addShape(pres.shapes.RECTANGLE,{x,y:1,w:cw-0.2,h:0.06,fill:{color:cc}});
+        s.addText(c.icon||"📌",{x:x+0.1,y:1.1,w:0.5,h:0.5,fontSize:22,margin:0});
+        s.addText(c.title||"",{x:x+0.65,y:1.1,w:cw-1,h:0.44,fontSize:13,fontFace:F,bold:true,color:C.deepBlue,margin:0});
+        s.addText(c.desc||"",{x:x+0.1,y:1.62,w:cw-0.4,h:1.6,fontSize:11,fontFace:F,color:C.grey,margin:0});});
+    } else if (sd.layout==="two-col") {
+      const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
+      [d.left||{},d.right||{}].forEach((col,ci)=>{const x=ci===0?0.5:6.9;
+        s.addShape(pres.shapes.RECTANGLE,{x,y:0.82,w:6,h:0.38,fill:{color:ci===0?C.deepBlue:C.digitalBlue}});
+        s.addText(col.title||"",{x:x+0.1,y:0.82,w:5.8,h:0.38,fontSize:12,fontFace:F,bold:true,color:C.white,valign:"middle",margin:0});
+        (col.items||[]).forEach((it,ii)=>{s.addText(it,{x:x+0.42,y:1.28+ii*0.62,w:5.4,h:0.52,fontSize:12,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});});
+    } else {
+      const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
+      (d.bullets||[]).forEach((b,i)=>{s.addShape(pres.shapes.RECTANGLE,{x:0.5,y:0.88+i*0.7,w:0.06,h:0.42,fill:{color:C.orange}});s.addText(b,{x:0.75,y:0.88+i*0.7,w:12,h:0.56,fontSize:13,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});
+    }
+  }
+  const es=pres.addSlide();es.background={color:C.deepBlue};es.addText("Pioneering\nan ethical\ndigital world.",{x:0.8,y:1.8,w:8,h:2.8,fontSize:34,fontFace:F,bold:true,color:C.white,margin:0});es.addText("GOFORE",{x:0.8,y:6.85,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
+  const out=path.join(__dirname,"pptx_fb_"+Date.now()+".pptx");
+  await pres.writeFile({fileName:out}); return out;
+}
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`✅ Gofore agentti portissa ${PORT}`));
