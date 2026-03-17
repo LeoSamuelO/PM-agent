@@ -105,7 +105,8 @@ function SlidePreview({ slide, data, onClick }) {
   const layout = slide.layout;
   const W = 320, H = 180;
   const base = { width:W, height:H, borderRadius:8, overflow:"hidden", cursor:onClick?"pointer":"default",
-    boxShadow:"0 2px 8px rgba(0,0,0,0.12)", border:"1px solid "+G.silver, position:"relative", flexShrink:0 };
+    boxShadow:"0 2px 8px rgba(0,0,0,0.12)", border:"1px solid "+G.silver, position:"relative", flexShrink:0,
+    transition:"transform 0.15s", };
 
   if (layout === "title") return (
     <div style={{...base, background:G.deepBlue}} onClick={onClick}>
@@ -217,14 +218,11 @@ function Divider({text}){return(
     <div style={{flex:1,height:1,background:G.silver}}/><span style={{background:G.light,border:"1px solid "+G.silver,borderRadius:20,padding:"3px 14px",fontSize:12,color:G.grey,fontWeight:600,whiteSpace:"nowrap"}}>{text}</span><div style={{flex:1,height:1,background:G.silver}}/>
   </div>);}
 
-function Bubble({role,content,children}){
+function Bubble({role,content}){
   const ai=role==="assistant";
   return(<div style={{display:"flex",flexDirection:ai?"row":"row-reverse",gap:10,marginBottom:16,alignItems:"flex-start"}}>
     <div style={{width:32,height:32,borderRadius:"50%",background:ai?G.deepBlue:G.orange,color:ai?G.orange:G.white,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0,marginTop:2}}>{ai?"G":"P"}</div>
-    <div style={{maxWidth:"76%"}}>
-      <div style={{background:ai?G.white:G.deepBlue,color:ai?G.deepBlue:G.white,borderRadius:ai?"3px 14px 14px 14px":"14px 3px 14px 14px",padding:"12px 16px",fontSize:14,lineHeight:1.65,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{content}</div>
-      {children}
-    </div>
+    <div style={{maxWidth:"76%",background:ai?G.white:G.deepBlue,color:ai?G.deepBlue:G.white,borderRadius:ai?"3px 14px 14px 14px":"14px 3px 14px 14px",padding:"12px 16px",fontSize:14,lineHeight:1.65,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{content}</div>
   </div>);}
 
 function Pill({slide,status}){
@@ -258,7 +256,8 @@ export default function App() {
   const [docContext, setDocContext] = useState("");
   const [focusType, setFocusType] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [editingSlide, setEditingSlide] = useState(null); // Palaa muokkaamaan -tila
+  const [editingSlide, setEditingSlide] = useState(null);
+  const [zoomedSlide, setZoomedSlide] = useState(null); // index of zoomed slide in review
 
   const bottom=useRef(); const fileInput=useRef();
   const collectedRef=useRef({}); const proposingRef=useRef(false);
@@ -275,11 +274,6 @@ export default function App() {
   const history=useCallback(()=>msgs.filter(m=>m.role==="user"||m.role==="assistant").map(m=>({role:m.role,content:m.content})),[msgs]);
   const addMsg=useCallback((role,content)=>setMsgs(p=>[...p,{role,content}]),[]);
   const addDivider=useCallback((text)=>setMsgs(p=>[...p,{type:"divider",content:text}]),[]);
-
-  // Lisää viesti JA esikatselu datan kanssa
-  const addMsgWithPreview=useCallback((role,content,slide,data)=>{
-    setMsgs(p=>[...p,{role,content,preview:{slide,data}}]);
-  },[]);
 
   const phaseSystem=useCallback(()=>{
     const ctx=docContextRef.current; const focus=focusTypeRef.current;
@@ -441,13 +435,7 @@ Täytä schema projektin tiedoilla. Vain tämä dia.`}],phaseSystem());
       const extracted=extractSlideData(r);
       pendingSlideRef.current=extracted[slide.id]||null;
       addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
-      // Näytä viesti + esikatselu
-      const cleanText=strip(r);
-      if(pendingSlideRef.current){
-        addMsgWithPreview("assistant",cleanText,slide,pendingSlideRef.current);
-      } else {
-        addMsg("assistant",cleanText);
-      }
+      addMsg("assistant",strip(r));
       setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
     }finally{proposingRef.current=false;}
   }
@@ -456,8 +444,13 @@ Täytä schema projektin tiedoilla. Vain tämä dia.`}],phaseSystem());
     const cur=slidesRef.current; const idx=slideIdxRef.current;
     const slide=cur[idx]; const isLast=idx===cur.length-1;
 
-    if(isShortYes(userText)){
-      let slideData=pendingSlideRef.current;
+    // Tunnista "ei muutoksia" / "peruuta" kun muokataan review-tilasta
+    const cancelWords=["en mitään","ei muutoksia","peruuta","en halua","ei tarvitse","cancel","ei muuteta","tämä on hyvä","ok ei","en muuta"];
+    const isCancel=editingSlide!==null && cancelWords.some(w=>userText.trim().toLowerCase().includes(w));
+
+    if(isShortYes(userText)||isCancel){
+      // Hyväksy tai peruuta muokkaus → tallenna olemassa oleva data
+      let slideData=pendingSlideRef.current||collectedRef.current[slide.id];
       if(!slideData){slideData=await genSlideData(slide);}
       if(slideData){const nc={...collectedRef.current,[slide.id]:slideData};collectedRef.current=nc;setCollected(nc);}
       pendingSlideRef.current=null;
@@ -466,7 +459,7 @@ Täytä schema projektin tiedoilla. Vain tämä dia.`}],phaseSystem());
       // Jos muokattiin review-tilasta → palaa reviewiin
       if(editingSlide!==null){
         setEditingSlide(null);
-        addMsg("assistant","✓ "+slide.label+" päivitetty!");
+        addMsg("assistant","✓ "+slide.label+(isCancel?" — ei muutoksia, pidetään nykyinen.":" päivitetty!"));
         showReview(cur);
         return;
       }
@@ -478,13 +471,12 @@ Täytä schema projektin tiedoilla. Vain tämä dia.`}],phaseSystem());
         const hist=[...history(),{role:"user",content:userText},{role:"assistant",content:"✓ "+slide.label+" tallennettu."}];
         setTimeout(()=>proposeSlide(next,hist,cur),300);
       } else {
-        // KAIKKI DIAT VALMIIT → siirry review-näkymään
         addMsg("assistant","✓ "+slide.label+" tallennettu.");
         showReview(cur);
       }
       return;
     }
-    // Muutoksia — voi sisältää vaihtoehdon valinnan
+    // Muutoksia
     const schema=SLIDE_SCHEMAS[slide.layout]||'{"heading":"..."}';
     const hist=[...history(),{role:"user",content:userText}];
     const r=await callAPI([...hist,{role:"user",content:
@@ -493,9 +485,7 @@ Käyttäjä: "${userText}". Muokkaa, näytä, kysy hyväksyntä.
 Tallenna: [SLIDE_DATA:${slide.id}]${schema}[/SLIDE_DATA]`}],phaseSystem());
     const extracted=extractSlideData(r);
     if(extracted[slide.id]) pendingSlideRef.current=extracted[slide.id];
-    const cleanText=strip(r);
-    if(pendingSlideRef.current) addMsgWithPreview("assistant",cleanText,slide,pendingSlideRef.current);
-    else addMsg("assistant",cleanText);
+    addMsg("assistant",strip(r));
   }
 
   async function genSlideData(slide){
@@ -519,7 +509,6 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
 
   async function runReview(userText){
     const lower=userText.trim().toLowerCase();
-    // Tarkista haluaako muokata jotain diaa
     const editMatch=lower.match(/(?:muokkaa|muuta|korjaa|palaa)\s*(?:dia(?:a|n)?|slide)?\s*(\d+)/);
     if(editMatch){
       const num=parseInt(editMatch[1])-1;
@@ -529,22 +518,16 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
         setScreenSync("planning");
         setSlideIdxSync(num);
         setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
+        pendingSlideRef.current=collectedRef.current[slide.id]||null;
         addDivider("✏️ Muokataan: Dia "+(num+1)+" — "+slide.label);
-        addMsg("assistant","Palataan muokkaamaan diaa \""+slide.label+"\". Tässä nykyinen sisältö:");
-        // Näytä esikatselu nykyisestä datasta
-        const data=collectedRef.current[slide.id];
-        if(data) addMsgWithPreview("assistant","Mitä haluat muuttaa?",slide,data);
-        else addMsg("assistant","Dataa ei löytynyt. Ehdotan uuden sisällön.");
+        addMsg("assistant","Mitä haluat muuttaa diassa \""+slide.label+"\"? Kirjoita muutokset tai \"en mitään\" palataksesi.");
         return;
       }
     }
-    // "valmis", "generoi", "lataa" tms → tee PPTX
     if(isShortYes(lower)||["valmis","generoi","lataa","tee","luo","build"].some(w=>lower.includes(w))){
-      finishAndDownload(slidesRef.current);
-      return;
+      finishAndDownload(slidesRef.current); return;
     }
-    // Muu → kysy uudelleen
-    addMsg("assistant","Kirjoita \"valmis\" generoidakseni PowerPointin, tai \"muokkaa dia X\" palataksesi muokkaamaan tiettyä diaa.");
+    addMsg("assistant","Kirjoita \"valmis\" generoidakseni PowerPointin, tai \"muokkaa dia X\" palataksesi muokkaamaan tiettyä diaa.\n\nVoit myös klikata dian esikatselua yllä.");
   }
 
   function finishAndDownload(slidesArr){
@@ -676,14 +659,7 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
           <div style={{color:G.grey,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Diat {doneCount}/{slides.length}</div>
           {slides.map((s,i)=>(
             <div key={s.id} onClick={()=>{
-              if(screen==="review"&&statuses[s.id]==="done"){
-                // Klikkaa sivupalkista → aloita muokkaus
-                setEditingSlide(i);setScreenSync("planning");setSlideIdxSync(i);
-                setStatuses(prev=>({...prev,[s.id]:"confirming"}));
-                addDivider("✏️ Muokataan: Dia "+(i+1)+" — "+s.label);
-                const data=collectedRef.current[s.id];
-                if(data)addMsgWithPreview("assistant","Mitä haluat muuttaa diassa \""+s.label+"\"?",s,data);
-              }
+              if(screen==="review"){setZoomedSlide(i);}
             }} style={{cursor:screen==="review"?"pointer":"default"}}>
               <Pill slide={s} status={statuses[s.id]||"pending"} />
             </div>
@@ -729,20 +705,44 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
             <div style={{background:G.white,borderRadius:12,padding:"24px 40px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📂</div><div style={{color:G.digitalBlue,fontWeight:600}}>Pudota tiedostot tähän</div></div>
           </div>}
 
+          {/* Zoom-modal — suurennettu esikatselu */}
+          {zoomedSlide!==null&&slides[zoomedSlide]&&(
+            <div onClick={()=>setZoomedSlide(null)} style={{position:"fixed",inset:0,background:"rgba(12,35,64,0.85)",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <div onClick={e=>e.stopPropagation()} style={{cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+                <div style={{fontSize:14,color:G.white,fontWeight:600,marginBottom:4}}>
+                  Dia {zoomedSlide+1}/{slides.length} — {slides[zoomedSlide].icon} {slides[zoomedSlide].label}
+                </div>
+                <div style={{transform:"scale(2)",transformOrigin:"center center"}}>
+                  <SlidePreview slide={slides[zoomedSlide]} data={collectedRef.current[slides[zoomedSlide].id]} />
+                </div>
+                <div style={{display:"flex",gap:12,marginTop:80}}>
+                  <button onClick={()=>{
+                    const i=zoomedSlide;setZoomedSlide(null);
+                    setEditingSlide(i);setScreenSync("planning");setSlideIdxSync(i);
+                    const s=slides[i];
+                    setStatuses(prev=>({...prev,[s.id]:"confirming"}));
+                    pendingSlideRef.current=collectedRef.current[s.id]||null;
+                    addDivider("✏️ Muokataan: Dia "+(i+1)+" — "+s.label);
+                    addMsg("assistant","Mitä haluat muuttaa diassa \""+s.label+"\"? Kirjoita muutokset tai \"en mitään\" palataksesi.");
+                  }} style={{background:G.orange,color:G.white,border:"none",borderRadius:8,padding:"10px 24px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+                    ✏️ Muokkaa tätä diaa
+                  </button>
+                  <button onClick={()=>setZoomedSlide(null)} style={{background:"transparent",color:G.white,border:"1px solid "+G.silver,borderRadius:8,padding:"10px 24px",fontSize:14,cursor:"pointer"}}>
+                    Sulje
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Review-näkymä: kaikkien diojen esikatselut */}
           {screen==="review"&&slides.length>0&&(
             <div style={{margin:"12px 0 20px"}}>
               <div style={{display:"flex",flexWrap:"wrap",gap:12,justifyContent:"center"}}>
                 {slides.map((s,i)=>(
-                  <div key={s.id} style={{textAlign:"center"}}>
-                    <SlidePreview slide={s} data={collectedRef.current[s.id]} onClick={()=>{
-                      setEditingSlide(i);setScreenSync("planning");setSlideIdxSync(i);
-                      setStatuses(prev=>({...prev,[s.id]:"confirming"}));
-                      addDivider("✏️ Muokataan: Dia "+(i+1)+" — "+s.label);
-                      const data=collectedRef.current[s.id];
-                      if(data)addMsgWithPreview("assistant","Mitä haluat muuttaa?",s,data);
-                    }} />
-                    <div style={{fontSize:10,color:G.grey,marginTop:4}}>Dia {i+1}: {s.label}</div>
+                  <div key={s.id} style={{textAlign:"center",cursor:"pointer"}} onClick={()=>setZoomedSlide(i)}>
+                    <SlidePreview slide={s} data={collectedRef.current[s.id]} />
+                    <div style={{fontSize:10,color:G.grey,marginTop:4}}>Dia {i+1}: {s.label} <span style={{color:G.digitalBlue}}>🔍</span></div>
                   </div>
                 ))}
               </div>
@@ -759,12 +759,6 @@ Vastaa VAIN JSON. Ei selityksiä.`}],phaseSystem());
                 </button>
               </div>
             );
-            // Viesti + mahdollinen esikatselu
-            if(m.preview){
-              return <Bubble key={i} role={m.role} content={m.content}>
-                <div style={{marginTop:8}}><SlidePreview slide={m.preview.slide} data={m.preview.data}/></div>
-              </Bubble>;
-            }
             return<Bubble key={i} role={m.role} content={m.content}/>;
           })}
           {busy&&<div style={{display:"flex",gap:10}}>
