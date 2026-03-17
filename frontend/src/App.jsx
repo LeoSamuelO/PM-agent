@@ -66,8 +66,7 @@ function strip(text) {
   return text
     .replace(/\[SLIDE_DATA:[\w_-]+\][\s\S]*?\[\/SLIDE_DATA\]/g, "")
     .replace(/\[STRUCTURE_DATA\][\s\S]*?\[\/STRUCTURE_DATA\]/g, "")
-    .replace(/##[\w_]+##/g, "")
-    .replace(/\[FOCUS_TYPE\][\s\S]*?\[\/FOCUS_TYPE\]/g, "").trim();
+    .replace(/##[\w_]+##/g, "").trim();
 }
 
 function getPropose(slide) {
@@ -246,7 +245,7 @@ export default function App() {
     setScreen("interview");
     setMsgs([
       { type: "divider", content: "💬 Vaihe 1 — Haastattelu" },
-      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi omin sanoin — mitä on tarkoitus tehdä, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet tai rajoitteet. Voit myös liittää projektidokumentteja 📎-napista.\n\nEtenen kanssasi viidessä vaiheessa:\n1️⃣ Projektitiedot\n2️⃣ Esityksen fokus\n3️⃣ Tärkeimmät havainnot\n4️⃣ Diarakenne\n5️⃣ Diat yhdessä" }
+      { role: "assistant", content: "Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi — mitä tehdään, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet. Voit liittää dokumentteja 📎-napista.\n\n5 vaihetta:\n1️⃣ Projektitiedot  2️⃣ Fokus  3️⃣ Havainnot  4️⃣ Rakenne  5️⃣ Diat" }
     ]);
   }
 
@@ -267,27 +266,24 @@ export default function App() {
   }
 
   async function runFocus(hist) {
-    setScreen("focus");
-    screenRef.current = "focus";
+    setScreen("focus"); screenRef.current = "focus";
     window.__focusType = "";
     setMsgs(prev => [...prev, { type: "divider", content: "🎯 Vaihe 2 — Esityksen fokus" }]);
     const r = await callAPI([
       ...(hist || history()),
-      { role: "user", content: `OHJE: Kysy VAIN tämä yksi kysymys. ÄLÄ ehdota havaintoja, rakennetta tai sisältöä.
+      { role: "user", content: `OHJE: Tässä vaiheessa VAIN kysytään esityksen tarkoitus. ÄLÄ listaa havaintoja, rakennetta tai sisältöä.
 
-Kirjoita 1 lause projektin tilanteesta, sitten kysy täsmälleen:
-
+Kirjoita 1 lause projektin tilanteesta ja kysy:
 "Mihin tarkoitukseen tämä esitys tehdään?"
 1. 📋 Yleinen projektisuunnitelma
 2. ⚠️ Riskianalyysi
 3. 📅 Aikataulukatsaus
 4. 🚀 Kickoff-materiaali
-5. 👥 Sidosryhmäraportti johdolle / asiakkaalle
+5. 👥 Sidosryhmäraportti johdolle/asiakkaalle
 6. 🔍 Muu — kuvaile itse
 
-Odota vastaus. ÄLÄ jatka eteenpäin.` }
+Odota vastaus.` }
     ], docContext);
-    window.__focusHist = hist;
     setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
   }
 
@@ -298,19 +294,17 @@ Odota vastaus. ÄLÄ jatka eteenpäin.` }
       { role: "user", content: `Käyttäjä valitsi fokuksen: "${userText}"
 
 1. Tallenna: [FOCUS_TYPE]${userText}[/FOCUS_TYPE]
-2. Vahvista valinta 1 lauseella
-3. Listaa 4-6 tärkeintä havaintoa projektista JUURI tämän fokuksen näkökulmasta
-4. Kysy: "Oletko samaa mieltä näistä havainnoista? Voit lisätä, poistaa tai muuttaa."
+2. Vahvista 1 lauseella
+3. Listaa 4-6 tärkeintä havaintoa JUURI tämän fokuksen näkökulmasta
+4. Kysy: "Oletko samaa mieltä? Voit lisätä, poistaa tai muuttaa havaintoja."
 
-ÄLÄ ehdota diarakennetta. Odota vahvistus havainnoille.` }
+ÄLÄ ehdota diarakennetta vielä.` }
     ], docContext);
-
     const txt = strip(r);
     const fm = r.match(/\[FOCUS_TYPE\]([\s\S]*?)\[\/FOCUS_TYPE\]/);
     if (fm) { window.__focusType = fm[1].trim(); setFocusType(fm[1].trim()); }
     setMsgs(prev => [...prev, { role: "assistant", content: txt }]);
-    setScreen("insights");
-    screenRef.current = "insights";
+    setScreen("insights"); screenRef.current = "insights";
     setMsgs(prev => [...prev, { type: "divider", content: "🔍 Vaihe 3 — Tärkeimmät havainnot" }]);
   }
 
@@ -318,48 +312,35 @@ Odota vastaus. ÄLÄ jatka eteenpäin.` }
     const hist = [...history(), { role: "user", content: userText }];
     const r = await callAPI([
       ...hist,
-      { role: "user", content: `Käyttäjä kommentoi havaintoja (fokus: "${window.__focusType || ''}").
-
-Jos käyttäjä hyväksyy (ok/joo/hyvä/kyllä tms.):
-- Lisää: ##INSIGHTS_CONFIRMED##
-- Kirjoita: "Siirrytään diarakenteen suunnitteluun."
-
-Jos haluaa muuttaa: päivitä lista, näytä uusi versio, kysy uudelleen vahvistus.` }
+      { role: "user", content: `Käyttäjä kommentoi havaintoja (fokus: "${window.__focusType||''}").
+Jos hyväksyy (ok/joo/hyvä/kyllä/selvä tms.): lisää ##INSIGHTS_CONFIRMED## ja kirjoita "Siirrytään rakentamaan diarakenne."
+Jos haluaa muuttaa: päivitä lista, näytä se, kysy uudelleen.` }
     ], docContext);
-
     const txt = strip(r);
     setMsgs(prev => [...prev, { role: "assistant", content: txt }]);
-
     const confirmed = r.includes("##INSIGHTS_CONFIRMED##");
-    const msgWords = userText.trim().toLowerCase().split(/\s+/);
-    const shortYes = msgWords.length <= 3 &&
-      ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","kyl"].some(w => msgWords.includes(w));
-
-    if (confirmed || shortYes) {
-      await runStructurePhase([...hist, { role: "assistant", content: txt }]);
-    }
+    const w = userText.trim().toLowerCase().split(/\s+/);
+    const shortYes = w.length <= 3 && ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep"].some(x => w.includes(x));
+    if (confirmed || shortYes) await runStructurePhase([...hist, { role: "assistant", content: txt }]);
   }
 
   async function runStructurePhase(hist) {
-    setScreen("structure");
-    screenRef.current = "structure";
+    setScreen("structure"); screenRef.current = "structure";
     setMsgs(prev => [...prev, { type: "divider", content: "📐 Vaihe 4 — Diarakenne" }]);
     const r = await callAPI([
       ...(hist || history()),
-      { role: "user", content: `Esityksen fokus: "${window.__focusType || 'yleinen projektisuunnitelma'}"
+      { role: "user", content: `Fokus: "${window.__focusType||'yleinen projektisuunnitelma'}"
 
-Ehdota diarakenne tälle fokukselle. Muoto (yksi dia per rivi):
+Ehdota diarakenne tälle fokukselle (yksi dia per rivi):
 1. 🎯 Kansi — ...
-2. 📊 ...
+jne.
 
-Perustele 1 lauseella.
-Kysy: "Hyväksytkö tämän rakenteen, vai haluatko muuttaa?"
+Perustele 1 lauseella. Kysy: "Hyväksytkö tämän rakenteen?"
 
 Tallenna: [STRUCTURE_DATA][{"id":"cover","label":"Kansi","icon":"🎯","layout":"title"},...][/STRUCTURE_DATA]
 
-TÄRKEÄÄ id-kentässä: käytä vain pieniä kirjaimia ja alaviivoja (ei välilyöntejä tai erikoismerkkejä). Esim: "projektin_yleiskuva", "aikataulu", "riskit"` }
+ID-kentässä: VAIN pieniä kirjaimia ja alaviivoja. Esim: kansi, aikataulu, kriittiset_riskit` }
     ], docContext);
-
     const structure = extractTag(r, "STRUCTURE_DATA");
     setMsgs(prev => [...prev, { role: "assistant", content: strip(r) }]);
     if (structure) window.__pendingStructure = structure;
@@ -370,40 +351,35 @@ TÄRKEÄÄ id-kentässä: käytä vain pieniä kirjaimia ja alaviivoja (ei väli
     const r = await callAPI([
       ...hist,
       { role: "user", content: `Käyttäjä kommentoi rakenne-ehdotustasi.
-Jos hyväksyy (ok, kyllä, hyvä, sovittu tms.), lisää ##STRUCTURE_CONFIRMED## ja palauta lopullinen rakenne:
-[STRUCTURE_DATA][...][/STRUCTURE_DATA]
-Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päivitetty rakenne [STRUCTURE_DATA]-tagien sisällä.` }
+
+Jos hyväksyy rakenteen (ok/joo/hyvä/kyllä/selvä/sopii/käy tms.):
+- Lisää: ##STRUCTURE_CONFIRMED##
+- Palauta: [STRUCTURE_DATA][{"id":"kansi","label":"Kansi","icon":"🎯","layout":"title"},...][/STRUCTURE_DATA]
+- ID:ssä VAIN pieniä kirjaimia ja alaviivoja
+
+Jos haluaa muuttaa: tee muutos, näytä uusi lista, pyydä vahvistus. Palauta aina [STRUCTURE_DATA].` }
     ], docContext);
 
     const structure = extractTag(r, "STRUCTURE_DATA");
-    const c = strip(r);
-    setMsgs(prev => [...prev, { role: "assistant", content: c }]);
+    const txt = strip(r);
+    setMsgs(prev => [...prev, { role: "assistant", content: txt }]);
+    if (structure) window.__pendingStructure = structure;
 
-    // Käytä uutta rakennetta tai aiemmin tallennettua pending-rakennetta
-    const rawStructure = structure || window.__pendingStructure;
-    // Varmista että rakenne on aina taulukko
-    const confirmedStructure = Array.isArray(rawStructure) ? rawStructure
-      : rawStructure && typeof rawStructure === "object" ? Object.values(rawStructure)
-      : null;
-    // Tarkista vahvistus: tag TAI luonnollinen hyväksyntä ilman kysymysmerkkiä
-    const naturalConfirm = ["vahvistettu", "hyväksytty", "aloitetaan", "siirrytään", "hyvä rakenne"]
-      .some(kw => c.toLowerCase().includes(kw));
-    const lastLine = c.split("\n").filter(l => l.trim()).pop() || "";
-    const isConfirmed = (r.includes("##STRUCTURE_CONFIRMED##") || naturalConfirm) &&
-      !lastLine.includes("?") && confirmedStructure && confirmedStructure.length > 0;
+    const raw = window.__pendingStructure;
+    const confirmed = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? Object.values(raw) : null;
 
-    if (isConfirmed) {
-      setSlides(confirmedStructure);
-      slidesRef.current = confirmedStructure;   // ← sync heti, ei odoteta useEffect:iä
-      setStatuses(Object.fromEntries(confirmedStructure.map(s => [s.id, "pending"])));
+    const tagOk = r.includes("##STRUCTURE_CONFIRMED##");
+    const w = userText.trim().toLowerCase().split(/\s+/);
+    const shortYes = w.length <= 3 && ["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep"].some(x => w.includes(x));
+    const naturalOk = ["vahvistettu","hyväksytty","aloitetaan","siirrytään","sovittu","edetään"].some(kw => txt.toLowerCase().includes(kw));
+
+    if ((tagOk || shortYes || naturalOk) && confirmed && confirmed.length > 0) {
+      setSlides(confirmed); slidesRef.current = confirmed;
+      setStatuses(Object.fromEntries(confirmed.map(s => [s.id, "pending"])));
+      setScreen("planning"); screenRef.current = "planning";
+      setSlideIdx(0); slideIdxRef.current = 0;
       setMsgs(prev => [...prev, { type: "divider", content: "📄 Vaihe 5 — Diojen sisällöntuotanto" }]);
-      setScreen("planning");
-      screenRef.current = "planning";           // ← sync heti
-      setSlideIdx(0);
-      slideIdxRef.current = 0;                  // ← sync heti
-      await proposeSlide(0, [...hist, { role: "assistant", content: c }], confirmedStructure);
-    } else if (structure) {
-      window.__pendingStructure = structure;
+      await proposeSlide(0, [...hist, { role: "assistant", content: txt }], confirmed);
     }
   }
 
@@ -654,8 +630,9 @@ Jos haluaa muuttaa, tee muutos ja pyydä uusi vahvistus. Palauta aina myös päi
                screen === "focus"     ? "🎯 Vaihe 2 — Esityksen fokus" :
                screen === "insights"  ? "🔍 Vaihe 3 — Havainnot" + (focusType ? ": " + focusType : "") :
                screen === "structure" ? "📐 Vaihe 4 — Diarakenne" :
-               screen === "planning" && currentSlide ? "📄 Vaihe 5 — Dia " + (slideIdx+1) + "/" + slides.length + " — " + (currentSlide.icon||"") + " " + currentSlide.label :
-               screen === "ready"    ? "✅ Kaikki diat sovittu" : ""}
+               (screen === "planning" || screen === "ready") && slides.length > 0 ?
+                 "📄 Vaihe 5 — Dia " + (slideIdx+1) + "/" + slides.length + (currentSlide ? " — " + (currentSlide.icon||"") + " " + currentSlide.label : "") :
+               screen === "ready" ? "✅ Valmis" : ""}
             </div>
           </div>
         </div>
