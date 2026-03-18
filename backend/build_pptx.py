@@ -11,7 +11,12 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "Gofore_Template.pptx")
+TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Gofore_Template.pptx")
+# Fallback: etsi CWD:stä jos ei löydy skriptin vierestä
+if not os.path.exists(TEMPLATE_PATH):
+    alt = os.path.join(os.getcwd(), "Gofore_Template.pptx")
+    if os.path.exists(alt):
+        TEMPLATE_PATH = alt
 
 # Gofore värit
 C = {
@@ -423,6 +428,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
+        print(f"TEMPLATE: {TEMPLATE_PATH} exists={os.path.exists(TEMPLATE_PATH)}", flush=True)
         # Tuki kahdelle kutsumuodolle:
         # 1) build_pptx.py --file data.json output.pptx  (lukee tiedostosta)
         # 2) build_pptx.py '{"json":"data"}' output.pptx  (CLI-argumentti)

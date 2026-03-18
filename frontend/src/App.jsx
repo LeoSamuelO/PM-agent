@@ -331,7 +331,9 @@ Kysy: "Kumpi sopii vai haluatko yhdistelmän?"`}],
   }
 
   function tryParseStructure(text){
-    const allLines=text.split("\n").filter(l=>/^\d+\.\s/.test(l.trim()));
+    // Strip markdown bold ja muotoilu ennen parsintaa
+    const clean = text.replace(/\*{1,2}/g, "");
+    const allLines=clean.split("\n").filter(l=>/^\s*\d+[\.\)]\s/.test(l));
     if(!allLines.length) return null;
 
     // Ota vain ENSIMMÄINEN numerolista — pysähdy kun numero palaa 1:een
@@ -339,7 +341,7 @@ Kysy: "Kumpi sopii vai haluatko yhdistelmän?"`}],
     let seenFirst = false;
     for (const line of allLines) {
       const num = parseInt(line.trim());
-      if (num === 1 && seenFirst) break; // Toinen lista alkaa → lopeta
+      if (num === 1 && seenFirst) break;
       seenFirst = true;
       lines.push(line);
     }
@@ -347,8 +349,11 @@ Kysy: "Kumpi sopii vai haluatko yhdistelmän?"`}],
     const kw={kansi:"title",otsikko:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",cards:"cards","two-col":"two-col"};
     return lines.map((line,i)=>{
       const iconM=line.match(/(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u);
-      const labelM=line.match(/\d+\.\s*(?:\S+\s+)?(?:\*{0,2})([\wÀ-ÿ\s-]+?)(?:\*{0,2})\s*[-—–\(]/);
-      const label=labelM?labelM[1].trim():"Dia "+(i+1);
+      // Poista numero, emoji, ylimääräiset merkit ja ota label
+      const stripped = line.replace(/^\s*\d+[\.\)]\s*/, "").replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "").trim();
+      // Label on ensimmäinen osa ennen " - " tai " – " tai " — "
+      const labelParts = stripped.split(/\s*[-–—]\s*/);
+      const label = labelParts[0]?.trim() || "Dia "+(i+1);
       const id=label.toLowerCase().replace(/[^a-zäöå0-9]/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"")||"dia_"+(i+1);
       const layoutM=line.match(/[-–—]\s*(title|bullets|table|gantt|cards|two-col)/i) || line.match(/\((title|bullets|table|gantt|cards|two-col)\)/i);
       let layout=layoutM?layoutM[1].toLowerCase():"bullets";
@@ -471,18 +476,24 @@ Kysy: "Kumpi sopii vai haluatko yhdistelmän?"`}],
   function showReview(slidesArr){
     setScreenSync("review");
     const tt=T[langRef.current];
-    const list=(slidesArr||slidesRef.current).map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
-    const count=(slidesArr||slidesRef.current).length;
+    const cur=slidesArr||slidesRef.current;
+    const list=cur.map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
+    const fi=langRef.current==="fi";
+    const instructions = fi
+      ? `${cur.length} diaa on käyty läpi!\n\n${list}\n\nToiminnot:\n• "muokkaa dia 2" — muokkaa dian sisältöä\n• "poista dia 3" — poistaa dian\n• "lisää dia" — lisää uusi dia\n• "valmis" — generoi PowerPoint`
+      : `${cur.length} slides completed!\n\n${list}\n\nActions:\n• "edit slide 2" — edit slide content\n• "remove slide 3" — remove a slide\n• "add slide" — add a new slide\n• "done" — generate PowerPoint`;
     setMsgs(p=>[...p,
       {type:"divider",content:tt.phases.review},
-      {role:"assistant",content:`${count} ${tt.reviewIntro}\n\n${list}\n\n${tt.reviewEdit}`},
+      {role:"assistant",content:instructions},
     ]);
   }
 
   async function runReview(userText){
     const lower=userText.trim().toLowerCase();
     const tt=T[langRef.current];
-    // Match both Finnish and English edit commands
+    const fi=langRef.current==="fi";
+
+    // EDIT slide
     const editMatch=lower.match(/(?:muokkaa|muuta|korjaa|palaa|edit|change|fix)\s*(?:dia(?:a|n)?|slide)?\s*(\d+)/);
     if(editMatch){
       const num=parseInt(editMatch[1])-1;
@@ -490,16 +501,71 @@ Kysy: "Kumpi sopii vai haluatko yhdistelmän?"`}],
         const slide=slidesRef.current[num];
         setEditingSlide(num);setScreenSync("planning");setSlideIdxSync(num);
         setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
-        addDivider("✏️ "+(langRef.current==="fi"?"Muokataan":"Editing")+": "+(num+1)+" — "+slide.label);
+        addDivider("✏️ "+(fi?"Muokataan":"Editing")+": "+(num+1)+" — "+slide.label);
         addMsg("assistant",tt.editAsk+" \""+slide.label+"\"?\n"+tt.editCancel);
         return;
       }
     }
-    // Match both Finnish and English done commands
+
+    // DELETE slide
+    const delMatch=lower.match(/(?:poista|poistaa|remove|delete)\s*(?:dia(?:a|n)?|slide)?\s*(\d+)/);
+    if(delMatch){
+      const num=parseInt(delMatch[1])-1;
+      if(num>=0&&num<slidesRef.current.length){
+        const slide=slidesRef.current[num];
+        // Älä anna poistaa kansidiaa
+        if(slide.layout==="title"){
+          addMsg("assistant",fi?"Kansidiaa ei voi poistaa.":"Cannot remove the title slide.");
+          return;
+        }
+        const newSlides=slidesRef.current.filter((_,i)=>i!==num);
+        setSlides(newSlides);slidesRef.current=newSlides;
+        // Poista myös tallennettu data
+        const nc={...collectedRef.current}; delete nc[slide.id]; collectedRef.current=nc;
+        const ns={...statuses}; delete ns[slide.id]; setStatuses(ns);
+        addMsg("assistant","✓ "+(fi?"Dia":"Slide")+" \""+ slide.label +"\" "+(fi?"poistettu.":"removed."));
+        showReview(newSlides);
+        return;
+      }
+    }
+
+    // ADD slide
+    if(["lisää dia","lisää uusi","add slide","add new","new slide"].some(w=>lower.includes(w))){
+      addDivider("➕ "+(fi?"Uusi dia":"New slide"));
+      addMsg("assistant",fi
+        ? "Mikä on uuden dian aihe? Ja mikä layout sopisi parhaiten?\nVaihtoehdot: bullets, table, gantt, cards, two-col\n\nKirjoita esim: \"Resurssit ja vastuut - table\""
+        : "What's the new slide topic? And which layout?\nOptions: bullets, table, gantt, cards, two-col\n\nE.g.: \"Resources and roles - table\"");
+      setEditingSlide("adding");
+      return;
+    }
+
+    // Handle adding slide response
+    if(editingSlide==="adding"){
+      const layoutM=lower.match(/(bullets|table|gantt|cards|two-col)/i);
+      const layout=layoutM?layoutM[1].toLowerCase():"bullets";
+      const name=userText.trim().replace(/\s*[-–—]\s*(bullets|table|gantt|cards|two-col).*/i,"").trim().substring(0,50);
+      const newId="dia_new_"+Date.now();
+      const newSlide={id:newId,label:name||"Uusi dia",icon:"📌",layout};
+      const newSlides=[...slidesRef.current,newSlide];
+      setSlides(newSlides);slidesRef.current=newSlides;
+      setStatuses(prev=>({...prev,[newId]:"pending"}));
+      setEditingSlide(null);
+
+      // Siirry suoraan ehdottamaan uuden dian sisältöä
+      setScreenSync("planning");
+      setSlideIdxSync(newSlides.length-1);
+      setEditingSlide(newSlides.length-1);
+      setTimeout(()=>proposeSlide(newSlides.length-1,newSlides),100);
+      return;
+    }
+
+    // DONE
     if(["valmis","generoi","lataa","tee","luo","done","generate","download","finish"].some(w=>lower.includes(w))){
       doDownload(); return;
     }
-    addMsg("assistant",langRef.current==="fi"?"Kirjoita \"valmis\" tai \"muokkaa dia X\".":"Type \"done\" or \"edit slide X\".");
+    addMsg("assistant",fi
+      ? "Komennot: \"muokkaa dia X\", \"poista dia X\", \"lisää dia\" tai \"valmis\"."
+      : "Commands: \"edit slide X\", \"remove slide X\", \"add slide\" or \"done\".");
   }
 
   async function doDownload(){

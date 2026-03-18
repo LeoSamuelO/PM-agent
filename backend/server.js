@@ -80,16 +80,36 @@ app.post("/api/build-pptx", async (req, res) => {
   const script = path.join(__dirname, "build_pptx.py");
 
   // KRIITTINEN FIX: Kirjoita payload TIEDOSTOON, ei CLI-argumenttina
-  // (CLI-argumentti voi olla liian pitkä suurille esityksille)
   if (fs.existsSync(script)) {
     try {
       fs.writeFileSync(jsonPath, JSON.stringify({ slideData, slideStructure }), "utf8");
       console.log("📝 JSON kirjoitettu:", jsonPath, "(" + fs.statSync(jsonPath).size + " bytes)");
+      
+      // Tarkista template
+      const tmpl = path.join(__dirname, "Gofore_Template.pptx");
+      console.log("📁 Template:", tmpl, "exists:", fs.existsSync(tmpl));
+
+      // Yritä python3, sitten python
+      const pythonCmd = await (async () => {
+        for (const cmd of ["python3", "python"]) {
+          try {
+            await new Promise((ok, fail) => {
+              execFile(cmd, ["--version"], {timeout:5000}, (err,stdout) => err ? fail(err) : ok(stdout));
+            });
+            return cmd;
+          } catch { continue; }
+        }
+        return null;
+      })();
+
+      if (!pythonCmd) throw new Error("Python ei löydy");
+      console.log("🐍 Käytetään:", pythonCmd);
 
       await new Promise((ok, fail) => {
-        execFile("python3", [script, "--file", jsonPath, outPath], {
+        execFile(pythonCmd, [script, "--file", jsonPath, outPath], {
           maxBuffer: 10 * 1024 * 1024,
           timeout: 30000,
+          cwd: __dirname, // Varmista työhakemisto
         }, (err, stdout, stderr) => {
           if (err) {
             console.error("Python stderr:", stderr);
