@@ -154,6 +154,96 @@ function Divider({text}){return(<div style={{display:"flex",alignItems:"center",
 function Bubble({role,content}){const ai=role==="assistant";return(<div style={{display:"flex",flexDirection:ai?"row":"row-reverse",gap:10,marginBottom:16,alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:"50%",background:ai?G.deepBlue:G.orange,color:ai?G.orange:G.white,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0,marginTop:2}}>{ai?"G":"P"}</div><div style={{maxWidth:"76%",background:ai?G.white:G.deepBlue,color:ai?G.deepBlue:G.white,borderRadius:ai?"3px 14px 14px 14px":"14px 3px 14px 14px",padding:"12px 16px",fontSize:14,lineHeight:1.65,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{content}</div></div>);}
 function Pill({slide,status}){const cfg={pending:{bg:G.light,border:G.silver,color:G.grey,sub:""},proposing:{bg:"#FFF3EE",border:G.orange,color:G.orange,sub:"Ehdotettu"},confirming:{bg:"#E8F4FB",border:G.digitalBlue,color:G.digitalBlue,sub:"Odottaa"},done:{bg:"#E8FAF7",border:G.mint,color:G.mint,sub:"✓ Sovittu"}}[status]||{bg:G.light,border:G.silver,color:G.grey,sub:""};return(<div style={{background:cfg.bg,border:"1.5px solid "+cfg.border,borderRadius:10,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:15}}>{slide.icon||"📄"}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:cfg.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{slide.label}</div>{cfg.sub&&<div style={{fontSize:10,color:cfg.color,opacity:0.8}}>{cfg.sub}</div>}</div><div style={{width:7,height:7,borderRadius:"50%",background:cfg.border,flexShrink:0}}/></div>);}
 
+function SlideThumb({slide, data, index}) {
+  const d = data || {};
+  const W=220, H=124;
+  const bg = slide.layout==="title" ? G.deepBlue : G.white;
+  const tc = slide.layout==="title" ? G.white : G.deepBlue;
+
+  const renderContent = () => {
+    if (slide.layout==="title") return (
+      <div style={{padding:"12px 10px",height:"100%",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+        <div style={{fontSize:9,fontWeight:700,color:G.white,lineHeight:1.3,marginBottom:4}}>{(d.title||slide.label||"").substring(0,50)}</div>
+        <div style={{fontSize:6,color:G.orange}}>{(d.tagline||"").substring(0,60)}</div>
+        <div style={{fontSize:5,color:G.silver,marginTop:4}}>{d.meta||""}</div>
+      </div>
+    );
+    if (slide.layout==="gantt") {
+      const phases = d.phases || [];
+      return (
+        <div style={{padding:"4px 6px"}}>
+          <div style={{fontSize:7,fontWeight:700,color:tc,marginBottom:3}}>{d.heading||slide.label}</div>
+          {phases.slice(0,5).map((ph,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:3,marginBottom:2}}>
+              <div style={{fontSize:5,color:tc,width:45,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{ph.name}</div>
+              <div style={{flex:1,height:6,background:G.light,borderRadius:2,position:"relative"}}>
+                <div style={{position:"absolute",left:`${((ph.start-1)/(d.totalWeeks||8))*100}%`,width:`${((ph.end-ph.start+1)/(d.totalWeeks||8))*100}%`,height:"100%",background:ph.critical?G.orange:G.digitalBlue,borderRadius:2}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (slide.layout==="cards") {
+      const cards = d.cards || [];
+      return (
+        <div style={{padding:"4px 6px"}}>
+          <div style={{fontSize:7,fontWeight:700,color:tc,marginBottom:3}}>{d.heading||slide.label}</div>
+          <div style={{display:"flex",gap:3}}>
+            {cards.slice(0,3).map((c,i)=>(
+              <div key={i} style={{flex:1,background:G.light,borderRadius:3,padding:"3px 4px",borderTop:"2px solid "+(c.level==="high"?"#C0392B":c.level==="medium"?"#E67E22":"#27AE60")}}>
+                <div style={{fontSize:5,fontWeight:600,color:tc}}>{(c.icon||"")+" "+(c.title||"").substring(0,15)}</div>
+                <div style={{fontSize:4,color:G.grey,marginTop:1}}>{(c.desc||"").substring(0,30)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    if (slide.layout==="table") {
+      const cols = d.columns || [];
+      const rows = d.rows || [];
+      return (
+        <div style={{padding:"4px 6px"}}>
+          <div style={{fontSize:7,fontWeight:700,color:tc,marginBottom:3}}>{d.heading||slide.label}</div>
+          <div style={{background:G.deepBlue,borderRadius:2,padding:"2px 4px",display:"flex",gap:2,marginBottom:1}}>
+            {cols.slice(0,4).map((c,i)=><div key={i} style={{flex:1,fontSize:4,color:G.white,fontWeight:600}}>{c}</div>)}
+          </div>
+          {rows.slice(0,3).map((row,ri)=>(
+            <div key={ri} style={{display:"flex",gap:2,padding:"1px 4px",background:ri%2===0?G.light:G.white}}>
+              {(row||[]).slice(0,4).map((cell,ci)=><div key={ci} style={{flex:1,fontSize:4,color:tc}}>{String(cell||"").substring(0,15)}</div>)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    // Bullets / default
+    const bullets = d.bullets || [];
+    return (
+      <div style={{padding:"4px 6px"}}>
+        <div style={{fontSize:7,fontWeight:700,color:tc,marginBottom:3}}>{d.heading||slide.label}</div>
+        {bullets.slice(0,5).map((b,i)=>(
+          <div key={i} style={{display:"flex",gap:3,alignItems:"flex-start",marginBottom:1}}>
+            <div style={{width:3,height:3,background:G.orange,borderRadius:1,marginTop:2,flexShrink:0}}/>
+            <div style={{fontSize:5,color:tc,lineHeight:1.3}}>{b.substring(0,50)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{width:W,flexShrink:0,cursor:"default"}}>
+      <div style={{width:W,height:H,background:bg,borderRadius:6,border:"1px solid "+G.silver,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",position:"relative"}}>
+        {slide.layout!=="title"&&<div style={{height:2,background:G.orange}}/>}
+        {renderContent()}
+        <div style={{position:"absolute",bottom:2,right:4,fontSize:5,color:G.silver}}>GOFORE</div>
+      </div>
+      <div style={{textAlign:"center",marginTop:4,fontSize:10,color:G.grey}}>{index+1}. {slide.icon||""} {slide.label}</div>
+    </div>
+  );
+}
+
 // ═══ PÄÄKOMPONENTTI ═══
 export default function App() {
   const [screen,setScreen]=useState("intro");
@@ -349,11 +439,14 @@ export default function App() {
   function showReview(slidesArr){
     setScreenSync("review");setEditingSlide(null);
     const cur=slidesArr||slidesRef.current;const fi=langRef.current==="fi";
-    const list=cur.map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
     const instructions=fi
-      ?`${cur.length} diaa on käyty läpi!\n\n${list}\n\nToiminnot:\n• "muokkaa dia 2" — muokkaa sisältöä\n• "poista dia 3" — poistaa dian\n• "lisää dia" — lisää uusi dia\n• "valmis" — generoi PowerPoint`
-      :`${cur.length} slides completed!\n\n${list}\n\nActions:\n• "edit slide 2" — edit content\n• "remove slide 3" — remove slide\n• "add slide" — add new slide\n• "done" — generate PowerPoint`;
-    setMsgs(p=>[...p,{type:"divider",content:T[langRef.current].phases.review},{role:"assistant",content:instructions}]);
+      ?`Toiminnot:\n• "muokkaa dia 2" — muokkaa sisältöä\n• "poista dia 3" — poistaa dian\n• "lisää dia" — lisää uusi dia\n• "valmis" — generoi PowerPoint`
+      :`Actions:\n• "edit slide 2" — edit content\n• "remove slide 3" — remove slide\n• "add slide" — add new slide\n• "done" — generate PowerPoint`;
+    setMsgs(p=>[...p,
+      {type:"divider",content:T[langRef.current].phases.review},
+      {type:"gallery",slides:cur,collected:{...collectedRef.current}},
+      {role:"assistant",content:instructions},
+    ]);
   }
 
   async function runReview(userText){
@@ -372,7 +465,9 @@ export default function App() {
       if(slide.layout==="title"){addMsg("assistant",fi?"Kansidiaa ei voi poistaa.":"Cannot remove title slide.");return;}
       const newSlides=slidesRef.current.filter((_,i)=>i!==num);
       setSlides(newSlides);slidesRef.current=newSlides;
+      // Siivoa data JA statukset
       const nc={...collectedRef.current};delete nc[slide.id];collectedRef.current=nc;
+      setStatuses(prev=>{const ns={...prev};delete ns[slide.id];return ns;});
       addMsg("assistant","✓ \""+slide.label+"\" "+(fi?"poistettu.":"removed."));
       showReview(newSlides);return;}}
     // ADD — kysytään aihe ja paikka
@@ -447,7 +542,7 @@ export default function App() {
 
   // ═══ RENDER ═══
   const canSend=!busy&&(input.trim().length>0||attachments.length>0);
-  const doneCount=Object.values(statuses).filter(s=>s==="done").length;
+  const doneCount=slides.filter(s=>statuses[s.id]==="done").length;
   const showSidebar=slides.length>0&&["planning","review","ready"].includes(screen);
 
   const LangToggle=()=>(<div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:20}}>
@@ -488,7 +583,17 @@ export default function App() {
       <div style={{flex:1,overflowY:"auto",padding:"20px 16px",position:"relative"}}
         onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragOver(false);}} onDrop={e=>{e.preventDefault();setDragOver(false);const fl=[];if(e.dataTransfer.items){for(const it of Array.from(e.dataTransfer.items)){if(it.kind==="file"){const f=it.getAsFile();if(f)fl.push(f);}}}else fl.push(...Array.from(e.dataTransfer.files));if(fl.length)addFiles(fl);}}>
         {dragOver&&<div style={{position:"absolute",inset:0,background:"rgba(27,108,168,0.1)",border:"2px dashed "+G.digitalBlue,borderRadius:8,zIndex:10,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><div style={{background:G.white,borderRadius:12,padding:"24px 40px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📂</div></div></div>}
-        {msgs.map((m,i)=>m.type==="divider"?<Divider key={i} text={m.content}/>:<Bubble key={i} role={m.role} content={m.content}/>)}
+        {msgs.map((m,i)=>{
+          if(m.type==="divider") return <Divider key={i} text={m.content}/>;
+          if(m.type==="gallery") return (
+            <div key={i} style={{overflowX:"auto",padding:"12px 0",marginBottom:16}}>
+              <div style={{display:"flex",gap:12,minWidth:"max-content",paddingBottom:8}}>
+                {(m.slides||[]).map((s,si)=><SlideThumb key={s.id} slide={s} data={(m.collected||{})[s.id]} index={si}/>)}
+              </div>
+            </div>
+          );
+          return <Bubble key={i} role={m.role} content={m.content}/>;
+        })}
         {busy&&<div style={{display:"flex",gap:10}}><div style={{width:32,height:32,borderRadius:"50%",background:G.deepBlue,color:G.orange,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12}}>G</div><div style={{background:G.white,borderRadius:"3px 14px 14px 14px",padding:"12px 16px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><span style={{color:G.grey,letterSpacing:6,fontSize:16}}>● ● ●</span></div></div>}
         <div ref={bottom}/>
       </div>
