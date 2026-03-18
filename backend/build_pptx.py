@@ -77,10 +77,24 @@ def get_ph(slide, idx):
     return None
 
 
+def hide_unused_ph(slide, used_indices):
+    """Piilota käyttämättömät placeholderit — siirrä pois näkyvistä ja tyhjennä."""
+    for ph in slide.placeholders:
+        idx = ph.placeholder_format.idx
+        if idx not in used_indices:
+            # Tyhjennä teksti
+            if ph.has_text_frame:
+                ph.text_frame.clear()
+            # Kutista placeholder nollakokoiseksi ja siirrä pois
+            ph.left = 0
+            ph.top = 0
+            ph.width = Emu(1)  # Minimikoko (0 ei aina toimi)
+            ph.height = Emu(1)
+
+
 def build_title_slide(prs, d):
     """Layout 0: Cover slide circle only"""
     slide = add_slide(prs, L["cover"])
-    # idx=0: otsikko, idx=14: tagline, idx=15: meta
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("title", "Projektisuunnitelma"),
@@ -98,6 +112,8 @@ def build_title_slide(prs, d):
         if d.get("projectLead"):
             meta_parts.append("Projektin johtaja: " + d["projectLead"])
         set_text(meta_ph.text_frame, "  |  ".join(meta_parts), font_size=12, color=C["white"])
+
+    hide_unused_ph(slide, {0, 14, 15})
 
 
 def build_bullets_slide(prs, d, def_label):
@@ -140,6 +156,10 @@ def build_bullets_slide(prs, d, def_label):
         note_ph = get_ph(slide, 13)
         if note_ph:
             set_text(note_ph.text_frame, d["note"], font_size=11, color=C["grey"])
+
+    used = {0, 16, 10}
+    if d.get("note"): used.add(13)
+    hide_unused_ph(slide, used)
 
 
 def build_two_col_slide(prs, d, def_label):
@@ -200,42 +220,76 @@ def build_two_col_slide(prs, d, def_label):
             r2.font.size = Pt(font_size)
             r2.font.color.rgb = C["deepBlue"]
 
+    hide_unused_ph(slide, {0, 17, 10, 18})
+
 
 def build_cards_slide(prs, d, def_label):
-    """Layout 7: Title + content 3 column — kortit"""
-    slide = add_slide(prs, L["three_col"])
+    """Piirretään kortit käsin tasaiseen ruudukkoon — ei templateplaceholdereja."""
+    from pptx.util import Inches, Pt
+
+    slide = add_slide(prs, L["bullets"])  # Käytetään yksinkertaista layoutia
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
 
-    cards = d.get("cards", [])
-    # 3-column layoutin placeholder idx:t ovat 17, 18, 19 (tai vastaavat)
-    col_indices = [17, 10, 18]
+    # Piilota kaikki muut placeholderit
+    hide_unused_ph(slide, {0})
+
+    cards = d.get("cards", [])[:4]  # Max 4 korttia
+    if not cards:
+        return
+
     level_colors = {
         "high": C["red"], "korkea": C["red"],
         "medium": C["yellow"], "keski": C["yellow"],
         "low": C["green"], "matala": C["green"],
     }
 
-    for i, card in enumerate(cards[:3]):
-        ph = get_ph(slide, col_indices[i]) if i < len(col_indices) else None
-        if not ph:
-            continue
-        tf = ph.text_frame
-        tf.clear()
+    nc = len(cards)
+    margin = 0.4
+    gap = 0.25
+    total_w = 12.5 - 2 * margin
+    card_w = (total_w - (nc - 1) * gap) / nc
+    card_h = 4.2
+    top_y = 1.9
+
+    for i, card in enumerate(cards):
+        x = margin + i * (card_w + gap)
+        col = level_colors.get(str(card.get("level", "")).lower(), C["digitalBlue"])
+
+        # Kortin tausta
+        bg = slide.shapes.add_shape(1, Inches(x), Inches(top_y), Inches(card_w), Inches(card_h))
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = C["white"]
+        bg.line.color.rgb = C["silver"]
+        bg.line.width = Pt(1)
+        bg.shadow.inherit = False
+
+        # Väripalkkki ylhäällä
+        bar = slide.shapes.add_shape(1, Inches(x), Inches(top_y), Inches(card_w), Inches(0.06))
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = col
+        bar.line.fill.background()
+
+        # Ikoni + otsikko
+        title_box = slide.shapes.add_textbox(Inches(x + 0.15), Inches(top_y + 0.15), Inches(card_w - 0.3), Inches(0.6))
+        tf = title_box.text_frame
         tf.word_wrap = True
-        # Otsikko + ikoni
         p = tf.paragraphs[0]
         r = p.add_run()
         r.text = (card.get("icon", "") + " " + card.get("title", "")).strip()
         r.font.name = FONT
-        r.font.size = Pt(15)
+        r.font.size = Pt(14)
         r.font.bold = True
-        col = level_colors.get(str(card.get("level", "")).lower(), C["deepBlue"])
         r.font.color.rgb = col
+
         # Kuvaus
         if card.get("desc"):
-            p2 = tf.add_paragraph()
+            desc_box = slide.shapes.add_textbox(Inches(x + 0.15), Inches(top_y + 0.8), Inches(card_w - 0.3),
+                                                Inches(card_h - 1.0))
+            tf2 = desc_box.text_frame
+            tf2.word_wrap = True
+            p2 = tf2.paragraphs[0]
             r2 = p2.add_run()
             r2.text = card["desc"]
             r2.font.name = FONT
@@ -245,11 +299,13 @@ def build_cards_slide(prs, d, def_label):
 
 def build_table_slide(prs, d, def_label):
     """Layout 47: Headline + Timeline/table — taulukko"""
-    from pptx.util import Inches
     slide = add_slide(prs, L["timeline"])
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
+
+    # Piilota muut placeholderit — taulukko piirretään käsin
+    hide_unused_ph(slide, {0})
 
     cols = d.get("columns", [])
     rows = d.get("rows", [])
@@ -308,12 +364,14 @@ def build_table_slide(prs, d, def_label):
 def build_gantt_slide(prs, d, def_label):
     """Layout 47: Headline + Timeline — Gantt piirretään käsin"""
     from pptx.util import Inches, Pt
-    from pptx.enum.shapes import MSO_SHAPE_TYPE
 
     slide = add_slide(prs, L["timeline"])
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
+
+    # Piilota KAIKKI muut placeholderit — Gantt piirretään kokonaan käsin
+    hide_unused_ph(slide, {0})
 
     total_weeks = d.get("totalWeeks", 8)
     frozen_week = d.get("frozenWeek")
