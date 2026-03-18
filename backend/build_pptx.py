@@ -15,30 +15,30 @@ TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "Gofore_Template.pptx")
 
 # Gofore värit
 C = {
-    "deepBlue":    RGBColor(0x0C, 0x23, 0x40),
+    "deepBlue": RGBColor(0x0C, 0x23, 0x40),
     "digitalBlue": RGBColor(0x1B, 0x6C, 0xA8),
-    "orange":      RGBColor(0xE8, 0x52, 0x1A),
-    "mint":        RGBColor(0x3B, 0xBF, 0xAD),
-    "white":       RGBColor(0xFF, 0xFF, 0xFF),
-    "grey":        RGBColor(0x8C, 0x9B, 0xAA),
-    "silver":      RGBColor(0xD3, 0xD9, 0xDF),
-    "light":       RGBColor(0xEE, 0xF1, 0xF3),
-    "red":         RGBColor(0xC0, 0x39, 0x2B),
-    "yellow":      RGBColor(0xE6, 0x7E, 0x22),
-    "green":       RGBColor(0x27, 0xAE, 0x60),
+    "orange": RGBColor(0xE8, 0x52, 0x1A),
+    "mint": RGBColor(0x3B, 0xBF, 0xAD),
+    "white": RGBColor(0xFF, 0xFF, 0xFF),
+    "grey": RGBColor(0x8C, 0x9B, 0xAA),
+    "silver": RGBColor(0xD3, 0xD9, 0xDF),
+    "light": RGBColor(0xEE, 0xF1, 0xF3),
+    "red": RGBColor(0xC0, 0x39, 0x2B),
+    "yellow": RGBColor(0xE6, 0x7E, 0x22),
+    "green": RGBColor(0x27, 0xAE, 0x60),
 }
 
 FONT = "Cadiz"
 
 # Layout indeksit templatessa
 L = {
-    "cover":     0,   # Cover slide circle only
-    "bullets":   5,   # Title + content simple
-    "two_col":   6,   # Title + content 2 column
-    "three_col": 7,   # Title + content 3 column
-    "timeline":  47,  # Headline + Timeline/table placeholder
-    "section":   29,  # Section Break Title dark blue
-    "end":       53,  # End slide simple
+    "cover": 0,  # Cover slide circle only
+    "bullets": 5,  # Title + content simple
+    "two_col": 6,  # Title + content 2 column
+    "three_col": 7,  # Title + content 3 column
+    "timeline": 47,  # Headline + Timeline/table placeholder
+    "section": 29,  # Section Break Title dark blue
+    "end": 53,  # End slide simple
 }
 
 
@@ -96,7 +96,7 @@ def build_title_slide(prs, d):
 
 
 def build_bullets_slide(prs, d, def_label):
-    """Layout 5: Title + content simple"""
+    """Layout 5: Title + content simple — auto-resize font"""
     slide = add_slide(prs, L["bullets"])
     title_ph = get_ph(slide, 0)
     if title_ph:
@@ -107,21 +107,31 @@ def build_bullets_slide(prs, d, def_label):
         tf = content_ph.text_frame
         tf.clear()
         tf.word_wrap = True
-        bullets = d["bullets"]
+        bullets = d["bullets"][:10]  # Max 10 kohtaa
+
+        # Auto-resize: pienennä fonttia jos paljon sisältöä
+        total_chars = sum(len(b) for b in bullets)
+        if len(bullets) > 7 or total_chars > 600:
+            font_size = 11
+        elif len(bullets) > 5 or total_chars > 400:
+            font_size = 12
+        else:
+            font_size = 14
+
         for i, bullet in enumerate(bullets):
             if i == 0:
                 p = tf.paragraphs[0]
             else:
                 p = tf.add_paragraph()
             p.level = 0
+            p.space_after = Pt(2)
             run = p.add_run()
             run.text = bullet
             run.font.name = FONT
-            run.font.size = Pt(14)
+            run.font.size = Pt(font_size)
             run.font.color.rgb = C["deepBlue"]
 
     if d.get("note"):
-        # Lisää huomio pienellä tekstillä
         note_ph = get_ph(slide, 13)
         if note_ph:
             set_text(note_ph.text_frame, d["note"], font_size=11, color=C["grey"])
@@ -143,21 +153,22 @@ def build_two_col_slide(prs, d, def_label):
         tf = left_ph.text_frame
         tf.clear()
         tf.word_wrap = True
-        # Otsikko
+        items = left.get("items", [])[:8]
+        font_size = 11 if len(items) > 6 else 13
         p = tf.paragraphs[0]
         r = p.add_run()
         r.text = left.get("title", "")
         r.font.name = FONT
-        r.font.size = Pt(16)
+        r.font.size = Pt(14)
         r.font.bold = True
         r.font.color.rgb = C["deepBlue"]
-        # Rivit
-        for item in left.get("items", []):
+        for item in items:
             p2 = tf.add_paragraph()
+            p2.space_after = Pt(2)
             r2 = p2.add_run()
             r2.text = "• " + item
             r2.font.name = FONT
-            r2.font.size = Pt(13)
+            r2.font.size = Pt(font_size)
             r2.font.color.rgb = C["deepBlue"]
 
     # Oikea kolumni: idx=18
@@ -166,19 +177,22 @@ def build_two_col_slide(prs, d, def_label):
         tf = right_ph.text_frame
         tf.clear()
         tf.word_wrap = True
+        items = right.get("items", [])[:8]
+        font_size = 11 if len(items) > 6 else 13
         p = tf.paragraphs[0]
         r = p.add_run()
         r.text = right.get("title", "")
         r.font.name = FONT
-        r.font.size = Pt(16)
+        r.font.size = Pt(14)
         r.font.bold = True
         r.font.color.rgb = C["deepBlue"]
-        for item in right.get("items", []):
+        for item in items:
             p2 = tf.add_paragraph()
+            p2.space_after = Pt(2)
             r2 = p2.add_run()
             r2.text = "• " + item
             r2.font.name = FONT
-            r2.font.size = Pt(13)
+            r2.font.size = Pt(font_size)
             r2.font.color.rgb = C["deepBlue"]
 
 
@@ -246,9 +260,9 @@ def build_table_slide(prs, d, def_label):
     n_cols = len(cols)
     n_rows = len(rows) + 1  # +1 header
 
-    left   = Inches(0.4)
-    top    = Inches(1.3)
-    width  = Inches(12.3)
+    left = Inches(0.4)
+    top = Inches(1.3)
+    width = Inches(12.3)
     height = Inches(0.4 * n_rows)
 
     table = slide.shapes.add_table(n_rows, n_cols, left, top, width, height).table
@@ -301,7 +315,7 @@ def build_gantt_slide(prs, d, def_label):
     phases = d.get("phases", [])
 
     # Gantt-alueen koordinaatit (tuumina)
-    tl = 0.4   # left
+    tl = 0.4  # left
     tt = 1.35  # top
     pcw = 3.0  # phase name column width
     rh = 0.40  # row height
@@ -309,7 +323,8 @@ def build_gantt_slide(prs, d, def_label):
     avail_w = 12.5 - tl - pcw
     wcw = avail_w / total_weeks  # week column width
 
-    def add_rect(slide, x, y, w, h, fill_rgb, text=None, font_size=9, bold=False, text_color=None, align=PP_ALIGN.CENTER):
+    def add_rect(slide, x, y, w, h, fill_rgb, text=None, font_size=9, bold=False, text_color=None,
+                 align=PP_ALIGN.CENTER):
         shape = slide.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
         shape.fill.solid()
         shape.fill.fore_color.rgb = fill_rgb
@@ -336,7 +351,7 @@ def build_gantt_slide(prs, d, def_label):
         x = tl + pcw + w * wcw
         is_frozen = frozen_week and (w + 1 == frozen_week)
         fill = C["red"] if is_frozen else C["deepBlue"]
-        label = f"Vk{w+1}" + (" 🔒" if is_frozen else "")
+        label = f"Vk{w + 1}" + (" 🔒" if is_frozen else "")
         add_rect(slide, x, tt, wcw, hh, fill, label, font_size=8, bold=True)
 
     # Faasit
@@ -404,12 +419,22 @@ def build_pptx(slide_data, slide_structure, output_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: build_pptx.py '<json>' '<output_path>'", file=sys.stderr)
+        print("Usage: build_pptx.py [--file] '<json_or_filepath>' '<output_path>'", file=sys.stderr)
         sys.exit(1)
 
     try:
-        payload = json.loads(sys.argv[1])
-        output = sys.argv[2]
+        # Tuki kahdelle kutsumuodolle:
+        # 1) build_pptx.py --file data.json output.pptx  (lukee tiedostosta)
+        # 2) build_pptx.py '{"json":"data"}' output.pptx  (CLI-argumentti)
+        if sys.argv[1] == "--file":
+            json_path = sys.argv[2]
+            output = sys.argv[3]
+            with open(json_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        else:
+            payload = json.loads(sys.argv[1])
+            output = sys.argv[2]
+
         build_pptx(
             payload.get("slideData", {}),
             payload.get("slideStructure", []),
@@ -417,6 +442,7 @@ if __name__ == "__main__":
         )
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         print(f"ERROR:{e}", file=sys.stderr)
         sys.exit(1)

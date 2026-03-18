@@ -65,37 +65,60 @@ app.post("/api/chat", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── PPTX — Python build_pptx.py + Gofore-template (fallback: pptxgenjs) ──
+// ── PPTX — Python + Gofore-template (fallback: pptxgenjs) ────────
 app.post("/api/build-pptx", async (req, res) => {
   const { slideData, slideStructure } = req.body;
   if (!slideData || !slideStructure?.length) return res.status(400).json({ error: "Data puuttuu" });
 
-  // Oletusarvot puuttuville
   for (const sd of slideStructure) {
     if (!slideData[sd.id]) slideData[sd.id] = getDefault(sd);
   }
 
-  const payload = JSON.stringify({ slideData, slideStructure });
-  const outPath = path.join(__dirname, "pptx_" + Date.now() + ".pptx");
+  const ts = Date.now();
+  const outPath = path.join(__dirname, "pptx_" + ts + ".pptx");
+  const jsonPath = path.join(__dirname, "pptx_data_" + ts + ".json");
   const script = path.join(__dirname, "build_pptx.py");
 
-  // Yritä Python + Gofore-template ensin
+  // KRIITTINEN FIX: Kirjoita payload TIEDOSTOON, ei CLI-argumenttina
+  // (CLI-argumentti voi olla liian pitkä suurille esityksille)
   if (fs.existsSync(script)) {
     try {
+      fs.writeFileSync(jsonPath, JSON.stringify({ slideData, slideStructure }), "utf8");
+      console.log("📝 JSON kirjoitettu:", jsonPath, "(" + fs.statSync(jsonPath).size + " bytes)");
+
       await new Promise((ok, fail) => {
-        execFile("python3", [script, payload, outPath], { maxBuffer: 10*1024*1024, timeout: 30000 },
-          (err, stdout, stderr) => err ? fail(new Error(stderr || err.message)) : ok(stdout));
+        execFile("python3", [script, "--file", jsonPath, outPath], {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 30000,
+        }, (err, stdout, stderr) => {
+          if (err) {
+            console.error("Python stderr:", stderr);
+            fail(new Error(stderr || err.message));
+          } else {
+            console.log("Python stdout:", stdout.trim());
+            ok(stdout);
+          }
+        });
       });
+
+      // Siivoa JSON-tiedosto
+      fs.unlink(jsonPath, () => {});
+
       if (fs.existsSync(outPath)) {
+        console.log("✅ Python PPTX generoitu:", outPath);
         return res.download(outPath, "projektisuunnitelma.pptx", () => fs.unlink(outPath, () => {}));
       }
     } catch (e) {
-      console.error("Python PPTX-virhe:", e.message);
+      console.error("❌ Python PPTX-virhe:", e.message);
       fs.unlink(outPath, () => {});
+      fs.unlink(jsonPath, () => {});
     }
+  } else {
+    console.warn("⚠️ build_pptx.py ei löydy:", script);
   }
 
   // Fallback: pptxgenjs
+  console.log("⚠️ Käytetään pptxgenjs fallbackia");
   try {
     const fbPath = await buildFallbackPPTX(slideData, slideStructure);
     res.download(fbPath, "projektisuunnitelma.pptx", () => fs.unlink(fbPath, () => {}));
@@ -146,8 +169,8 @@ async function buildFallbackPPTX(data, structure) {
       rows.forEach((row,ri)=>{const bg=ri%2===0?C.white:C.light,y=tt+hh+ri*rh;(row||[]).forEach((cell,ci)=>{if(ci>=cols.length)return;s.addShape(pres.shapes.RECTANGLE,{x:tl+ci*cw,y,w:cw,h:rh,fill:{color:bg},line:{color:C.silver}});s.addText(String(cell||""),{x:tl+ci*cw+0.06,y,w:cw-0.1,h:rh,fontSize:11,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});});
     } else if (sd.layout==="cards") {
       const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
-      const cards=d.cards||[],lc={high:"C0392B",medium:"E67E22",low:"27AE60"},nc=Math.min(cards.length,3),cw=12.3/nc;
-      cards.forEach((c,i)=>{const x=0.5+i*cw,cc=lc[String(c.level||"").toLowerCase()]||C.digitalBlue;
+      const cards=d.cards||[],lc={high:"C0392B",medium:"E67E22",low:"27AE60"},nc=Math.min(cards.length,3),cw=12.3/Math.max(nc,1);
+      cards.slice(0,3).forEach((c,i)=>{const x=0.5+i*cw,cc=lc[String(c.level||"").toLowerCase()]||C.digitalBlue;
         s.addShape(pres.shapes.RECTANGLE,{x,y:1,w:cw-0.2,h:2.4,fill:{color:C.white},line:{color:C.silver}});
         s.addShape(pres.shapes.RECTANGLE,{x,y:1,w:cw-0.2,h:0.06,fill:{color:cc}});
         s.addText(c.icon||"📌",{x:x+0.1,y:1.1,w:0.5,h:0.5,fontSize:22,margin:0});
@@ -158,10 +181,17 @@ async function buildFallbackPPTX(data, structure) {
       [d.left||{},d.right||{}].forEach((col,ci)=>{const x=ci===0?0.5:6.9;
         s.addShape(pres.shapes.RECTANGLE,{x,y:0.82,w:6,h:0.38,fill:{color:ci===0?C.deepBlue:C.digitalBlue}});
         s.addText(col.title||"",{x:x+0.1,y:0.82,w:5.8,h:0.38,fontSize:12,fontFace:F,bold:true,color:C.white,valign:"middle",margin:0});
-        (col.items||[]).forEach((it,ii)=>{s.addText(it,{x:x+0.42,y:1.28+ii*0.62,w:5.4,h:0.52,fontSize:12,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});});
+        (col.items||[]).slice(0,8).forEach((it,ii)=>{s.addText(it,{x:x+0.42,y:1.28+ii*0.62,w:5.4,h:0.52,fontSize:12,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});});
     } else {
+      // Bullets — FIX: pienennä fonttia jos paljon sisältöä
       const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
-      (d.bullets||[]).forEach((b,i)=>{s.addShape(pres.shapes.RECTANGLE,{x:0.5,y:0.88+i*0.7,w:0.06,h:0.42,fill:{color:C.orange}});s.addText(b,{x:0.75,y:0.88+i*0.7,w:12,h:0.56,fontSize:13,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});
+      const bullets=d.bullets||[];
+      const fontSize = bullets.length > 7 ? 11 : bullets.length > 5 ? 12 : 13;
+      const rowH = bullets.length > 7 ? 0.55 : bullets.length > 5 ? 0.6 : 0.7;
+      bullets.slice(0,10).forEach((b,i)=>{
+        s.addShape(pres.shapes.RECTANGLE,{x:0.5,y:0.88+i*rowH,w:0.06,h:rowH-0.2,fill:{color:C.orange}});
+        s.addText(b,{x:0.75,y:0.88+i*rowH,w:12,h:rowH,fontSize,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});
+      });
     }
   }
   const es=pres.addSlide();es.background={color:C.deepBlue};es.addText("Pioneering\nan ethical\ndigital world.",{x:0.8,y:1.8,w:8,h:2.8,fontSize:34,fontFace:F,bold:true,color:C.white,margin:0});es.addText("GOFORE",{x:0.8,y:6.85,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
