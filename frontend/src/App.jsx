@@ -130,8 +130,23 @@ function strip(text) {
 function isShortYes(text) {
   const t=text.trim().toLowerCase(),w=t.split(/\s+/);
   if(w.length>8)return false;
-  if(["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","okei","hyväksyn","edetään","siirrytään","toimii","mennään","jatketaan","eteenpäin","seuraava","kunnossa","valmis","done","sure","good","fine","approved","next","continue","proceed"].some(x=>w.includes(x)))return true;
-  return["tämä käy","joo hyvä","tämä hyvä","mennään eteenpäin","näillä mennään","hyvältä näyttää","sopii hyvin","tämä sopii","looks good","let's go","that works"].some(p=>t.includes(p));
+  // Normalisoi pitkät vokaalit: "jooo"→"joo", "okeeei"→"okei"
+  const norm=t.replace(/(.)\1{2,}/g,"$1$1");
+  const nw=norm.split(/\s+/);
+  const yesWords=["ok","joo","kyllä","selvä","hyvä","sopii","käy","juu","yes","jep","okei","hyväksyn","edetään","siirrytään","toimii","mennään","jatketaan","eteenpäin","seuraava","kunnossa","valmis","done","sure","good","fine","approved","next","continue","proceed","kyl","jees","toki","ehdottomasti","absolutely","yep","yeah"];
+  if(yesWords.some(x=>w.includes(x)||nw.includes(x)))return true;
+  return["tämä käy","joo hyvä","tämä hyvä","mennään eteenpäin","näillä mennään","hyvältä näyttää","sopii hyvin","tämä sopii","looks good","let's go","that works","sounds good","tuo käy","se sopii","tuo sopii"].some(p=>t.includes(p)||norm.includes(p));
+}
+
+// Tunnista vaihtoehdon valinta: "1", "a", "vaihtoehto 1", "option b"
+function isOptionSelect(text) {
+  const t=text.trim().toLowerCase();
+  if(/^[1-2ab]\.?$/.test(t))return t.replace(/\./,"");
+  const m=t.match(/^(?:vaihtoehto|option|versio|valitsen)?\s*([1-2ab])/i);
+  if(m)return m[1];
+  if(/^(?:eka|ensimmäinen|first|ykkös)/i.test(t))return "1";
+  if(/^(?:toka|toinen|second|kakkos)/i.test(t))return "2";
+  return null;
 }
 
 // ═══ UI ═══
@@ -207,7 +222,11 @@ export default function App() {
       updateSummary("HAVAINNOT:\n"+lastAi.substring(0,500));
       await runStructureAsk();return;
     }
-    const r=await api([...recentMessages(3),{role:"user",content:userText},{role:"user",content:"[JÄRJESTELMÄOHJE] Päivitä havainnot. ÄLÄ ehdota diarakennetta."}],"VAIHE: Havainnot.\n"+buildContext());
+    const fi=langRef.current==="fi";
+    const r=await api([...recentMessages(3),{role:"user",content:userText},{role:"user",content:
+      fi?"[JÄRJESTELMÄOHJE] Päivitä havainnot. ÄLÄ ehdota diarakennetta. Jos et ymmärrä käyttäjän pyyntöä, KYSY mitä hän haluaa."
+        :"[SYSTEM] Update insights. Do NOT suggest slide structure. If unclear, ASK what the user wants."}],
+      "VAIHE: Havainnot.\n"+buildContext());
     addMsg("assistant",strip(r));
   }
 
@@ -243,14 +262,20 @@ export default function App() {
 
   async function runStructureConfirm(userText){
     const has=pendingStructRef.current?.length>0;
-    if(isShortYes(userText)&&has){
+    // Vaihtoehdon valinta ("1", "a") rakennevaiheessa = hyväksy oletus (vaihtoehto A)
+    const optChoice=isOptionSelect(userText);
+    if((isShortYes(userText)||optChoice)&&has){
       const confirmed=ensureKansi(pendingStructRef.current);
       addMsg("assistant",T[langRef.current].structureConfirmed);
       updateSummary("RAKENNE: "+confirmed.map(s=>s.label+"("+s.layout+")").join(", "));
       startPlanning(confirmed);return;
     }
-    if(isShortYes(userText)&&!has){await runStructureAsk();return;}
-    const r=await api([...recentMessages(3),{role:"user",content:userText},{role:"user",content:"[JÄRJESTELMÄOHJE] Tee muutokset, näytä lopullinen rakenne. Kansi AINA 1."}],"VAIHE: Diarakenne.\n"+buildContext());
+    if((isShortYes(userText)||optChoice)&&!has){await runStructureAsk();return;}
+    const fi=langRef.current==="fi";
+    const r=await api([...recentMessages(3),{role:"user",content:userText},{role:"user",content:
+      fi?"[JÄRJESTELMÄOHJE] Tee muutokset, näytä lopullinen rakenne. Kansi AINA 1. Jos et ymmärrä käyttäjän pyyntöä, KYSY mitä hän haluaa."
+        :"[SYSTEM] Make changes, show final structure. Title slide always first. If unclear, ASK what the user wants."}],
+      "VAIHE: Diarakenne.\n"+buildContext());
     const s=tryParseStructure(strip(r));if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
   }
@@ -285,6 +310,8 @@ export default function App() {
     const cur=slidesRef.current;const idx=slideIdxRef.current;const slide=cur[idx];
     const cancelWords=["en mitään","ei muutoksia","peruuta","nothing","no changes","cancel","nevermind"];
     const isCancel=editingSlide!==null&&cancelWords.some(w=>userText.trim().toLowerCase().includes(w));
+    const fi=langRef.current==="fi";
+
     if(isShortYes(userText)||isCancel){
       addMsg("assistant",T[langRef.current].saving);
       const proposalText=lastProposalRef.current[slide.id]||"";
@@ -297,7 +324,24 @@ export default function App() {
       else{addMsg("assistant","✓ "+slide.label+" "+T[langRef.current].saved);showReview(cur);}
       return;
     }
-    const r=await api([{role:"user",content:`Dian "${slide.label}" aiempi ehdotus:\n---\n${lastProposalRef.current[slide.id]||""}\n---\nMuutos: "${userText}"\nTee muutokset, näytä uusi versio, kysy hyväksyntä.`}],"VAIHE: Diojen sisältö.\n"+buildContext());
+
+    // Vaihtoehdon valinta: "1", "a", "vaihtoehto 1"
+    const optChoice=isOptionSelect(userText);
+    if(optChoice){
+      const r=await api([{role:"user",content:
+        fi?`Valitsin vaihtoehdon ${optChoice}. Näytä VAIN valittu vaihtoehto lopullisessa muodossa. Kysy hyväksyntä.`
+          :`I chose option ${optChoice}. Show ONLY the selected option in final form. Ask for confirmation.`}],
+        "VAIHE: Diojen sisältö.\n"+buildContext()+"\nAIEMPI EHDOTUS:\n"+(lastProposalRef.current[slide.id]||""));
+      const cleanText=strip(r);lastProposalRef.current[slide.id]=cleanText;addMsg("assistant",cleanText);
+      return;
+    }
+
+    // Muutospyyntö — kerro AI:lle myös kysymään jos ei ymmärrä
+    const r=await api([{role:"user",content:
+      `Dian "${slide.label}" aiempi ehdotus:\n---\n${lastProposalRef.current[slide.id]||""}\n---\nKäyttäjän viesti: "${userText}"\n\n${fi
+        ?"Tee pyydetyt muutokset ja näytä uusi versio. Jos et ymmärrä mitä käyttäjä haluaa, KYSY selventävä kysymys äläkä toista samaa sisältöä."
+        :"Make requested changes and show new version. If you don't understand what the user wants, ASK a clarifying question instead of repeating the same content."}`}],
+      "VAIHE: Diojen sisältö.\n"+buildContext());
     const cleanText=strip(r);lastProposalRef.current[slide.id]=cleanText;addMsg("assistant",cleanText);
   }
 
