@@ -78,18 +78,13 @@ def get_ph(slide, idx):
 
 
 def hide_unused_ph(slide, used_indices):
-    """Piilota käyttämättömät placeholderit — siirrä pois näkyvistä ja tyhjennä."""
-    for ph in slide.placeholders:
+    """Poista käyttämättömät placeholderit kokonaan — estää layout-tason tekstin vuotamisen."""
+    for ph in list(slide.placeholders):
         idx = ph.placeholder_format.idx
         if idx not in used_indices:
-            # Tyhjennä teksti
-            if ph.has_text_frame:
-                ph.text_frame.clear()
-            # Kutista placeholder nollakokoiseksi ja siirrä pois
-            ph.left = 0
-            ph.top = 0
-            ph.width = Emu(1)  # Minimikoko (0 ei aina toimi)
-            ph.height = Emu(1)
+            # Poista XML-elementti kokonaan slidelta
+            sp = ph._element
+            sp.getparent().remove(sp)
 
 
 def build_title_slide(prs, d):
@@ -117,44 +112,48 @@ def build_title_slide(prs, d):
 
 
 def build_bullets_slide(prs, d, def_label):
-    """Layout 5: Title + content simple — auto-resize font"""
+    """Layout 5: Title + content simple — käytä isoa sisältöaluetta."""
     slide = add_slide(prs, L["bullets"])
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
 
-    used = {0}  # Otsikko aina käytössä
-    content_ph = get_ph(slide, 16) or get_ph(slide, 10)
-    if content_ph and d.get("bullets"):
-        used.add(content_ph.placeholder_format.idx)
-        tf = content_ph.text_frame
+    used = {0}
+
+    # Käytä isoa sisältöaluetta (idx=10, 4.37" korkea) bulleteille
+    # idx=16 on pieni ingressi-alue (0.63") — käytä vain jos on erillinen note
+    main_ph = get_ph(slide, 10)
+    if main_ph and d.get("bullets"):
+        used.add(10)
+        tf = main_ph.text_frame
         tf.clear()
         tf.word_wrap = True
         bullets = d["bullets"][:10]
 
         total_chars = sum(len(b) for b in bullets)
         if len(bullets) > 7 or total_chars > 600:
-            font_size = 11
-        elif len(bullets) > 5 or total_chars > 400:
             font_size = 12
+        elif len(bullets) > 5 or total_chars > 400:
+            font_size = 13
         else:
             font_size = 14
 
         for i, bullet in enumerate(bullets):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.level = 0
-            p.space_after = Pt(2)
+            p.space_after = Pt(4)
             run = p.add_run()
             run.text = bullet
             run.font.name = FONT
             run.font.size = Pt(font_size)
             run.font.color.rgb = C["deepBlue"]
 
+    # Note/ingressi → pieni alue idx=16
     if d.get("note"):
-        note_ph = get_ph(slide, 13)
+        note_ph = get_ph(slide, 16)
         if note_ph:
-            set_text(note_ph.text_frame, d["note"], font_size=11, color=C["grey"])
-            used.add(13)
+            set_text(note_ph.text_frame, d["note"], font_size=12, color=C["grey"])
+            used.add(16)
 
     hide_unused_ph(slide, used)
 
@@ -373,12 +372,16 @@ def build_gantt_slide(prs, d, def_label):
     frozen_week = d.get("frozenWeek")
     phases = d.get("phases", [])
 
-    # Gantt-alueen koordinaatit — HUOM: alkaa alempaa niin otsikko ei peitä
-    tl = 0.4   # left
-    tt = 2.0   # top — otsikko-placeholder loppuu ~1.86", jätetään marginaali
-    pcw = 3.2  # phase name column width
-    rh = 0.38  # row height
-    hh = 0.32  # header height
+    # Gantt-alueen koordinaatit — dynaaminen rivikorkeus
+    tl = 0.4
+    tt = 2.0   # otsikko loppuu ~1.86", marginaali
+    pcw = 3.2
+    hh = 0.30  # header height
+    avail_h = 4.8  # käytettävissä oleva korkeus (tt → ~6.8, legend vie 0.3)
+    max_rh = 0.45
+    min_rh = 0.28
+    n_phases = len(phases) or 1
+    rh = max(min_rh, min(max_rh, (avail_h - hh) / n_phases))  # Skaalautuva
     avail_w = 12.5 - tl - pcw
     wcw = avail_w / total_weeks
 
@@ -414,6 +417,7 @@ def build_gantt_slide(prs, d, def_label):
 
     # Faasit — SELKEÄT VÄRIT: sininen = normaali, oranssi = kriittinen
     has_critical = any(ph.get("critical") for ph in phases)
+    phase_font = 9 if n_phases <= 6 else 8 if n_phases <= 10 else 7
     for ri, ph in enumerate(phases):
         y = tt + hh + ri * rh
         row_bg = C["light"] if ri % 2 == 0 else C["white"]
@@ -423,7 +427,7 @@ def build_gantt_slide(prs, d, def_label):
         prefix = "⬥ " if is_crit else ""
 
         add_rect(slide, tl, y, pcw, rh, name_bg,
-                 prefix + ph.get("name", ""), font_size=9, bold=is_crit,
+                 prefix + ph.get("name", ""), font_size=phase_font, bold=is_crit,
                  text_color=name_color, align=PP_ALIGN.LEFT)
 
         for w in range(total_weeks):

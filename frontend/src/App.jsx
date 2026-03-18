@@ -106,12 +106,15 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
     title:'{"title":"...","tagline":"...","meta":"...","projectLead":"..."}',
     bullets:'{"heading":"...","bullets":["kohta 1","kohta 2"],"note":""}',
     table:'{"heading":"...","columns":["S1","S2","S3"],"rows":[["a","b","c"]]}',
-    gantt:'{"heading":"...","totalWeeks":10,"frozenWeek":null,"phases":[{"name":"Vaihe","start":1,"end":3,"critical":false}]}',
+    gantt:'{"heading":"...","totalWeeks":8,"frozenWeek":null,"phases":[{"name":"Vaihe 1","start":1,"end":2,"critical":false},{"name":"Vaihe 2","start":2,"end":4,"critical":true}]}',
     cards:'{"heading":"...","cards":[{"icon":"⚠️","title":"...","desc":"...","level":"high"}]}',
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
   };
+  const extra = layout === "gantt"
+    ? "\n\nGANTT ERITYISSÄÄNNÖT:\n- Jokainen mainittu alivaihe/tehtävä = OMA rivi phases-taulukossa\n- ÄLÄ yhdistä vaiheita. Jos sisällössä on 10 vaihetta, JSON:ssa PITÄÄ olla 10 phase-objektia.\n- start/end = viikkonumeroita (1-pohjainen)\n- critical=true jos merkitty kriittiseksi poluksi"
+    : "";
   const r = await callAPI([{role:"user",content:
-    `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. Kaikki kohdat mukana. ÄLÄ tiivistä.`}],
+    `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä tai yhdistä kohtia.${extra}`}],
     "Olet JSON-muunnin. Vastaa VAIN validilla JSON-objektilla.", false, lang);
   try { const m=r.match(/\{[\s\S]*\}/); if(m)return JSON.parse(m[0]); }catch(e){console.error("JSON:",e);}
   return null;
