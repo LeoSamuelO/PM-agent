@@ -424,15 +424,21 @@ def build_pptx(slide_data, slide_structure, output_path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: build_pptx.py [--file] '<json_or_filepath>' '<output_path>'", file=sys.stderr)
+        print("Usage: build_pptx.py [--stdin|--file filepath|json_string] output.pptx", file=sys.stderr)
         sys.exit(1)
 
     try:
         print(f"TEMPLATE: {TEMPLATE_PATH} exists={os.path.exists(TEMPLATE_PATH)}", flush=True)
-        # Tuki kahdelle kutsumuodolle:
-        # 1) build_pptx.py --file data.json output.pptx  (lukee tiedostosta)
-        # 2) build_pptx.py '{"json":"data"}' output.pptx  (CLI-argumentti)
-        if sys.argv[1] == "--file":
+        print(f"CWD: {os.getcwd()}", flush=True)
+        print(f"Script dir: {os.path.dirname(os.path.abspath(__file__))}", flush=True)
+
+        if sys.argv[1] == "--stdin":
+            # Lue JSON stdinistä — luotettavin tapa
+            output = sys.argv[2]
+            raw = sys.stdin.read()
+            print(f"STDIN: {len(raw)} bytes", flush=True)
+            payload = json.loads(raw)
+        elif sys.argv[1] == "--file":
             json_path = sys.argv[2]
             output = sys.argv[3]
             with open(json_path, "r", encoding="utf-8") as f:
