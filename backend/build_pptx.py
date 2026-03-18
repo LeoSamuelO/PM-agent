@@ -394,9 +394,16 @@ def build_pptx(slide_data, slide_structure, output_path):
     prs = Presentation(TEMPLATE_PATH)
 
     # Poista kaikki olemassa olevat diat templatesta
-    xml_slides = prs.slides._sldIdLst
-    for sld_id in list(xml_slides):
-        xml_slides.remove(sld_id)
+    from pptx.oxml.ns import qn
+    sldIdLst = prs.slides._sldIdLst
+    for sldId in list(sldIdLst):
+        rId = sldId.get(qn('r:id'))
+        sldIdLst.remove(sldId)
+        if rId:
+            try:
+                prs.part.drop_rel(rId)
+            except Exception:
+                pass
 
     for slide_def in slide_structure:
         sid = slide_def.get("id", "")
