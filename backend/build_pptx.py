@@ -357,33 +357,48 @@ def build_table_slide(prs, d, def_label):
 
 
 def build_gantt_slide(prs, d, def_label):
-    """Layout 47: Headline + Timeline — Gantt piirretään käsin"""
+    """Layout 47: Headline + Timeline — auto months/weeks, capped to fit slide."""
     from pptx.util import Inches, Pt
+    import math
 
     slide = add_slide(prs, L["timeline"])
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
 
-    # Piilota KAIKKI muut placeholderit — Gantt piirretään kokonaan käsin
     hide_unused_ph(slide, {0})
 
     total_weeks = d.get("totalWeeks", 8)
     frozen_week = d.get("frozenWeek")
     phases = d.get("phases", [])
 
-    # Gantt-alueen koordinaatit — dynaaminen rivikorkeus
-    tl = 0.4
-    tt = 2.0   # otsikko loppuu ~1.86", marginaali
-    pcw = 3.2
-    hh = 0.30  # header height
-    avail_h = 4.8  # käytettävissä oleva korkeus (tt → ~6.8, legend vie 0.3)
-    max_rh = 0.45
-    min_rh = 0.28
+    # ═══ AUTO: kuukaudet vs viikot ═══
+    # Jos > 12 viikkoa TAI > 10 saraketta, käytä kuukausia
+    use_months = total_weeks > 12
+    if use_months:
+        total_cols = math.ceil(total_weeks / 4.33)  # viikot → kuukaudet
+        col_labels = [f"Kk{i+1}" for i in range(total_cols)]
+    else:
+        total_cols = total_weeks
+        col_labels = [f"Vk{i+1}" for i in range(total_cols)]
+
+    # ═══ RAJOITUKSET ═══
+    max_phases = 15  # Ei koskaan enempää kuin mahtuu dialle
+    phases = phases[:max_phases]
     n_phases = len(phases) or 1
-    rh = max(min_rh, min(max_rh, (avail_h - hh) / n_phases))  # Skaalautuva
+
+    # ═══ KOORDINAATIT ═══
+    tl = 0.4
+    tt = 2.0
+    pcw = 3.2 if total_cols <= 12 else 2.8  # Kapeampi nimi jos paljon sarakkeita
+    hh = 0.28
+    max_bottom = 6.6  # Jätä tilaa legendille (dian korkeus ~7.5)
+    avail_h = max_bottom - tt - hh - 0.35  # 0.35 legendille
+    max_rh = 0.40
+    min_rh = 0.22
+    rh = max(min_rh, min(max_rh, avail_h / n_phases))
     avail_w = 12.5 - tl - pcw
-    wcw = avail_w / total_weeks
+    wcw = avail_w / total_cols
 
     def add_rect(slide, x, y, w, h, fill_rgb, text=None, font_size=9, bold=False, text_color=None, align=PP_ALIGN.CENTER):
         shape = slide.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
@@ -404,20 +419,20 @@ def build_gantt_slide(prs, d, def_label):
             r.font.color.rgb = text_color or C["white"]
         return shape
 
-    # Header: "Vaihe" solu
-    add_rect(slide, tl, tt, pcw, hh, C["deepBlue"], "Vaihe", font_size=10, bold=True)
-
-    # Header: viikot
-    for w in range(total_weeks):
-        x = tl + pcw + w * wcw
-        is_frozen = frozen_week and (w + 1 == frozen_week)
+    # Header
+    add_rect(slide, tl, tt, pcw, hh, C["deepBlue"], "Vaihe", font_size=9, bold=True)
+    col_font = 8 if total_cols <= 12 else 7 if total_cols <= 18 else 6
+    for ci, lbl in enumerate(col_labels):
+        x = tl + pcw + ci * wcw
+        is_frozen = frozen_week and not use_months and (ci + 1 == frozen_week)
         fill = C["red"] if is_frozen else C["deepBlue"]
-        label = f"Vk{w+1}" + (" 🔒" if is_frozen else "")
-        add_rect(slide, x, tt, wcw, hh, fill, label, font_size=8, bold=True)
+        add_rect(slide, x, tt, wcw, hh, fill, lbl, font_size=col_font, bold=True)
 
-    # Faasit — SELKEÄT VÄRIT: sininen = normaali, oranssi = kriittinen
+    # Phases
     has_critical = any(ph.get("critical") for ph in phases)
-    phase_font = 9 if n_phases <= 6 else 8 if n_phases <= 10 else 7
+    phase_font = 8 if n_phases <= 8 else 7 if n_phases <= 12 else 6
+    name_max = 35 if pcw >= 3.0 else 28
+
     for ri, ph in enumerate(phases):
         y = tt + hh + ri * rh
         row_bg = C["light"] if ri % 2 == 0 else C["white"]
@@ -425,17 +440,29 @@ def build_gantt_slide(prs, d, def_label):
         name_bg = RGBColor(0xFF, 0xF2, 0xEC) if is_crit else row_bg
         name_color = C["orange"] if is_crit else C["deepBlue"]
         prefix = "⬥ " if is_crit else ""
+        name = ph.get("name", "")
+        if len(prefix + name) > name_max:
+            name = name[:name_max - len(prefix) - 1] + "…"
 
         add_rect(slide, tl, y, pcw, rh, name_bg,
-                 prefix + ph.get("name", ""), font_size=phase_font, bold=is_crit,
+                 prefix + name, font_size=phase_font, bold=is_crit,
                  text_color=name_color, align=PP_ALIGN.LEFT)
 
-        for w in range(total_weeks):
-            x = tl + pcw + w * wcw
-            active = ph.get("start", 0) <= w + 1 <= ph.get("end", 0)
-            is_frozen = frozen_week and (w + 1 == frozen_week)
+        # Muunna viikot sarakkeiksi
+        start = ph.get("start", 1)
+        end = ph.get("end", start)
+        if use_months:
+            start_col = max(0, int((start - 1) / 4.33))
+            end_col = min(total_cols - 1, int((end - 1) / 4.33))
+        else:
+            start_col = start - 1
+            end_col = end - 1
+
+        for ci in range(total_cols):
+            x = tl + pcw + ci * wcw
+            active = start_col <= ci <= end_col
+            is_frozen = frozen_week and not use_months and (ci + 1 == frozen_week)
             if active:
-                # Selkeä logiikka: oranssi = kriittinen polku, sininen = normaali
                 fill = C["orange"] if is_crit else C["digitalBlue"]
             elif is_frozen:
                 fill = RGBColor(0xFF, 0xE0, 0xD6)
@@ -443,8 +470,8 @@ def build_gantt_slide(prs, d, def_label):
                 fill = row_bg
             add_rect(slide, x, y, wcw, rh, fill)
 
-    # ═══ SELITE (legend) ═══
-    legend_y = tt + hh + len(phases) * rh + 0.25
+    # ═══ SELITE — varmista että mahtuu dialle ═══
+    legend_y = min(tt + hh + n_phases * rh + 0.15, max_bottom)
     legend_items = [("Normaali vaihe", C["digitalBlue"])]
     if has_critical:
         legend_items.append(("Kriittinen polku", C["orange"]))
@@ -453,21 +480,19 @@ def build_gantt_slide(prs, d, def_label):
 
     lx = tl
     for label, color in legend_items:
-        # Väripallo
-        dot = slide.shapes.add_shape(1, Inches(lx), Inches(legend_y), Inches(0.18), Inches(0.18))
+        dot = slide.shapes.add_shape(1, Inches(lx), Inches(legend_y), Inches(0.15), Inches(0.15))
         dot.fill.solid()
         dot.fill.fore_color.rgb = color
         dot.line.fill.background()
-        # Teksti
-        tb = slide.shapes.add_textbox(Inches(lx + 0.22), Inches(legend_y - 0.02), Inches(1.8), Inches(0.22))
+        tb = slide.shapes.add_textbox(Inches(lx + 0.2), Inches(legend_y - 0.02), Inches(1.6), Inches(0.2))
         tf = tb.text_frame
         p = tf.paragraphs[0]
         r = p.add_run()
         r.text = label
         r.font.name = FONT
-        r.font.size = Pt(8)
+        r.font.size = Pt(7)
         r.font.color.rgb = C["grey"]
-        lx += 2.2
+        lx += 2.0
 
 
 def build_end_slide(prs):

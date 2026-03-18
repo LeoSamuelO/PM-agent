@@ -111,7 +111,7 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
   };
   const extra = layout === "gantt"
-    ? "\n\nGANTT ERITYISSÄÄNNÖT:\n- Jokainen mainittu alivaihe/tehtävä = OMA rivi phases-taulukossa\n- ÄLÄ yhdistä vaiheita. Jos sisällössä on 10 vaihetta, JSON:ssa PITÄÄ olla 10 phase-objektia.\n- start/end = viikkonumeroita (1-pohjainen)\n- critical=true jos merkitty kriittiseksi poluksi"
+    ? "\n\nGANTT ERITYISSÄÄNNÖT:\n- Jokainen mainittu alivaihe/tehtävä = OMA rivi phases-taulukossa (MAX 15 vaihetta)\n- ÄLÄ yhdistä vaiheita. Jos sisällössä on 10 vaihetta, JSON:ssa PITÄÄ olla 10 phase-objektia.\n- start/end = viikkonumeroita (1-pohjainen)\n- totalWeeks = projektin kokonaiskesto viikkoina. LASKE OIKEIN: 3kk=13vko, 6kk=26vko, 12kk=52vko\n- Jos projekti > 3kk, kaavio näytetään automaattisesti kuukausina — viikkonumerot toimivat silti\n- critical=true jos merkitty kriittiseksi poluksi tai riippuu muista vaiheista\n- Vaiheiden nimet max 35 merkkiä"
     : "";
   const r = await callAPI([{role:"user",content:
     `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä tai yhdistä kohtia.${extra}`}],
@@ -179,6 +179,7 @@ export default function App() {
   const pendingStructRef=useRef(null);const docContextRef=useRef("");
   const langRef=useRef(localStorage.getItem("pm_lang")||"fi");
   const lastProposalRef=useRef({});const summaryRef=useRef("");
+  const decisionsRef=useRef([]);  // Isot päätökset: toimittajavalinnat, budjetti, aikataulu jne.
 
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,busy]);
   function setScreenSync(v){setScreen(v);screenRef.current=v;}
@@ -187,9 +188,17 @@ export default function App() {
   const addDivider=useCallback((text)=>setMsgs(p=>[...p,{type:"divider",content:text}]),[]);
   const api=useCallback((msgs,extra,search)=>callAPI(msgs,extra,search,langRef.current),[]);
 
-  function buildContext(){let c="";if(summaryRef.current)c+=summaryRef.current+"\n\n";if(docContextRef.current)c+="LÄHDEMATERIAALIT:\n"+docContextRef.current.substring(0,3000)+"\n\n";if(focusTypeRef.current)c+="FOKUS: "+focusTypeRef.current+"\n\n";return c;}
+  function buildContext(){
+    let c="";
+    if(summaryRef.current)c+=summaryRef.current+"\n\n";
+    if(decisionsRef.current.length>0)c+="═══ TEHDYT PÄÄTÖKSET (EHDOTTOMAT — ÄLÄ MUUTA) ═══\n"+decisionsRef.current.map((d,i)=>(i+1)+". "+d).join("\n")+"\n═══════════════════════════════════\n\n";
+    if(docContextRef.current)c+="LÄHDEMATERIAALIT:\n"+docContextRef.current.substring(0,3000)+"\n\n";
+    if(focusTypeRef.current)c+="FOKUS: "+focusTypeRef.current+"\n\n";
+    return c;
+  }
   function recentMessages(n){const all=msgs.filter(m=>m.role==="user"||m.role==="assistant");return all.slice(-(n*2)).map(m=>({role:m.role,content:m.content}));}
   function updateSummary(note){summaryRef.current=(summaryRef.current?summaryRef.current+"\n":"")+note;}
+  function addDecision(decision){if(!decisionsRef.current.includes(decision))decisionsRef.current=[...decisionsRef.current,decision];}
 
   // ═══ VAIHE 1 ═══
   function startInterview(){setScreenSync("interview");setMsgs([{type:"divider",content:T[langRef.current].phases.interview},{role:"assistant",content:T[langRef.current].greeting}]);}
@@ -223,6 +232,13 @@ export default function App() {
       addMsg("assistant",T[langRef.current].moveToStructure);
       const lastAi=msgs.filter(m=>m.role==="assistant").slice(-2).map(m=>m.content).join("\n");
       updateSummary("HAVAINNOT:\n"+lastAi.substring(0,500));
+      // Etsi päätökset havainnoista
+      try{
+        const dr=await api([{role:"user",content:
+          `Alla on projektin havainnot. Listaa VAIN konkreettiset päätökset/valinnat/suositukset jotka on tehty (esim. valittu toimittaja, budjettiraja, teknologia, deadline). Yksi per rivi. Jos päätöksiä ei ole, vastaa "EI PÄÄTÖKSIÄ".\n\n${lastAi.substring(0,1500)}`}],
+          "Vastaa vain lista päätöksistä, ei mitään muuta.",false,langRef.current);
+        if(dr&&!dr.includes("EI PÄÄTÖKSIÄ")){dr.split("\n").filter(l=>l.trim().length>5&&!l.startsWith("EI")).forEach(d=>addDecision(d.replace(/^[-•*\d.)\s]+/,"")));}
+      }catch(e){console.log("Decision extract:",e);}
       await runStructureAsk();return;
     }
     const fi=langRef.current==="fi";
@@ -257,7 +273,8 @@ export default function App() {
       let layout=layoutM?layoutM[1].toLowerCase():"bullets";
       if(!layoutM){for(const[k,v]of Object.entries(kw)){if(line.toLowerCase().includes(k)){layout=v;break;}}}
       if(i===0&&/kansi|cover/i.test(line))layout="title";
-      return{id,label,icon:iconM?iconM[1]:"📄",layout};
+      const layoutIcons={title:"🎯",bullets:"📋",table:"📊",gantt:"📅",cards:"⚠️","two-col":"📑"};
+      return{id,label,icon:iconM?iconM[1]:(layoutIcons[layout]||"📄"),layout};
     });
   }
 
@@ -321,6 +338,16 @@ export default function App() {
       const slideData=await convertToJSON(slide.label,slide.layout,proposalText,langRef.current);
       if(slideData){collectedRef.current={...collectedRef.current,[slide.id]:slideData};}
       setStatuses(prev=>({...prev,[slide.id]:"done"}));
+      // Tarkista sisältääkö dia päätöksiä — tallenna ne
+      const decisionKeywords=/suosit|valitaan|päätös|valinta|ehdot|recomm|select|decision|chosen|budjetti.*hyväk/i;
+      if(decisionKeywords.test(proposalText)){
+        try{
+          const dr=await api([{role:"user",content:
+            `Tässä dian "${slide.label}" hyväksytty sisältö. Listaa VAIN konkreettiset päätökset (valittu toimittaja/teknologia/budjetti/aikataulu). Yksi per rivi. Jos ei päätöksiä, vastaa "EI".\n\n${proposalText.substring(0,1500)}`}],
+            "Vastaa vain lista päätöksistä.",false,langRef.current);
+          if(dr&&!dr.match(/^EI$/im)){dr.split("\n").filter(l=>l.trim().length>5&&!l.match(/^EI$/i)).forEach(d=>addDecision(d.replace(/^[-•*\d.)\s]+/,"")));}
+        }catch(e){console.log("Slide decision:",e);}
+      }
       if(editingSlide!==null){setEditingSlide(null);addMsg("assistant","✓ "+slide.label+" "+(isCancel?T[langRef.current].noChanges:T[langRef.current].updated));showReview(cur);return;}
       const next=idx+1;
       if(next<cur.length){setSlideIdxSync(next);addMsg("assistant","✓ "+slide.label+" "+T[langRef.current].saved);setTimeout(()=>proposeSlide(next,cur),300);}
