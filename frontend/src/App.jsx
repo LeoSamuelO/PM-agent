@@ -45,25 +45,29 @@ function getSystem(lang) {
   const today = new Date().toLocaleDateString(lang==="fi"?"fi-FI":"en-US",{year:"numeric",month:"long",day:"numeric"});
   if (lang==="fi") return `Olet kokenut projektikonsultti Goforella. Kommunikoi AINA suomeksi.
 TÄNÄÄN ON: ${today}.
-ROOLISI: Olet osa sovellusta joka generoi PowerPoint-tiedoston. Roolisi on kerätä sisältö keskustelemalla.
+ROOLISI: Olet osa sovellusta joka generoi PowerPoint-tiedoston. Roolisi on kerätä sisältö keskustelemalla JA ANALYSOIDA materiaalia.
 SÄÄNNÖT:
 1. ÄLÄ keksi tietoja. Käytä VAIN annettuja materiaaleja.
 2. Puuttuva tieto → KYSY.
 3. Ole ytimekäs, max 2-3 kappaletta.
 4. Käsittele VAIN pyydetty asia.
-5. Tarjoa 2 vaihtoehtoa.
-6. ÄLÄ ARVAA päivämääriä, viikonpäiviä, lukuja tai faktoja. Jos et ole 100% varma → käytä web-hakua tarkistaaksesi. On parempi tarkistaa kuin arvata väärin.
+5. ÄLÄ ARVAA päivämääriä tai lukuja. Epävarma → käytä web-hakua.
+6. Ole RATKAISUKESKEINEN: Älä vain toista dataa — analysoi, vertaile, tee johtopäätöksiä ja suosituksia. Jos materiaalissa on ongelma tai valinta, ota kantaa ja perustele.
+7. EHDOTA KUVAAJIA: Kun datassa on lukuja, vertailuja tai trendejä, ehdota taulukkoa (table), Gantt-kaaviota tai korttinäkymää (cards). Älä laita lukuja bullet-listaan jos taulukko olisi selkeämpi.
+8. Tarjoa 2 vaihtoehtoa — mutta kerro kumpi on suosituksesi ja miksi.
 ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja.`;
   return `You are an experienced project consultant at Gofore. ALWAYS communicate in English.
 TODAY IS: ${today}.
-ROLE: You collect content through conversation for an automatic PowerPoint generator.
+ROLE: You collect content through conversation for an automatic PowerPoint generator AND ANALYZE the material.
 RULES:
 1. NEVER invent data.
 2. Missing info → ASK.
 3. Be concise.
 4. Handle ONLY current topic.
-5. Offer 2 approaches.
-6. NEVER GUESS dates, weekdays, numbers or facts. If not 100% sure → use web search to verify. Better to check than guess wrong.
+5. NEVER GUESS dates or numbers. Unsure → use web search.
+6. Be SOLUTION-ORIENTED: Don't just restate data — analyze, compare, draw conclusions and make recommendations. If there's a problem or choice, take a position and justify it.
+7. SUGGEST CHARTS: When data has numbers, comparisons or trends, suggest table, Gantt chart or cards layout. Don't put numbers in bullet lists when a table would be clearer.
+8. Offer 2 options — but tell which you recommend and why.
 NEVER produce [SLIDE_DATA] or [STRUCTURE_DATA] tags.`;
 }
 
@@ -222,7 +226,11 @@ export default function App() {
     setFocusType(userText.trim());focusTypeRef.current=userText.trim();
     updateSummary("FOKUS: "+userText.trim());
     setScreenSync("insights");addDivider("🔍 Vaihe 3");
-    const r=await api([{role:"user",content:`Fokus: "${userText.trim()}"\nListaa 4-6 havaintoa. ÄLÄ ehdota diarakennetta. Kysy: "Hyväksytkö?"`}],"VAIHE: Havainnot.\n"+buildContext());
+    const fi=langRef.current==="fi";
+    const insightPrompt=fi
+      ?`Fokus: "${userText.trim()}"\n\nAnalysoi materiaali ja listaa 4-6 HAVAINTOA:\n- Jokaisessa havainnossa: FAKTA + JOHTOPÄÄTÖS + SUOSITUS/KYSYMYS\n- Jos materiaalissa on valintoja tai vaihtoehtoja → ota kantaa, kerro suosituksesi\n- Jos löydät ristiriitoja tai puutteita → nosta ne esiin\n- Jos datassa on lukuja → laske: ROI, takaisinmaksu, vertailut\n- ÄLÄ vain toista mitä materiaalissa lukee — ANALYSOI\n\nÄLÄ ehdota diarakennetta. Kysy: "Hyväksytkö nämä havainnot?"`
+      :`Focus: "${userText.trim()}"\n\nAnalyze material and list 4-6 INSIGHTS:\n- Each: FACT + CONCLUSION + RECOMMENDATION/QUESTION\n- If choices/alternatives → take a position, give recommendation\n- If contradictions or gaps → raise them\n- If numbers → calculate: ROI, payback, comparisons\n- Don't just restate the material — ANALYZE\n\nDon't suggest slide structure. Ask: "Do you approve these insights?"`;
+    const r=await api([{role:"user",content:insightPrompt}],"VAIHE: Havainnot.\n"+buildContext());
     addMsg("assistant",strip(r));
   }
 
@@ -252,7 +260,11 @@ export default function App() {
   // ═══ VAIHE 4 ═══
   async function runStructureAsk(){
     setScreenSync("structure");addDivider("📐 Vaihe 4 — Diarakenne");
-    const r=await api([{role:"user",content:`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-6 diaa)** — kansi + 3-5 sisältödiaa\n**B: Kattava (7-9 diaa)** — kansi + 6-8 sisältödiaa\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\nKysy: "Kumpi sopii?"`}],"VAIHE: Diarakenne.\n"+buildContext());
+    const fi=langRef.current==="fi";
+    const structPrompt=fi
+      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-6 diaa)** — kansi + 3-5 sisältödiaa\n**B: Kattava (7-9 diaa)** — kansi + 6-8 sisältödiaa\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-VALINTA:\n- Vertailut, luvut, toimittajat, budjetit → TABLE (ei bullets!)\n- Riskit, haasteet, priorisoinnit → CARDS\n- Aikataulu → GANTT\n- Pros/cons, nykytila vs tavoite → TWO-COL\n- Vain kun ei lukuja eikä vertailua → BULLETS\n\nKysy: "Kumpi sopii?"`
+      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-6 slides)** — cover + 3-5 content\n**B: Comprehensive (7-9 slides)** — cover + 6-8 content\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT SELECTION:\n- Comparisons, numbers, vendors, budgets → TABLE (not bullets!)\n- Risks, challenges, priorities → CARDS\n- Timeline → GANTT\n- Pros/cons, current vs target → TWO-COL\n- Only when no numbers or comparisons → BULLETS\n\nAsk: "Which one?"`;
+    const r=await api([{role:"user",content:structPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
     const s=tryParseStructure(strip(r)); if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
   }
@@ -314,11 +326,25 @@ export default function App() {
     try{
       const cur=slidesArr||slidesRef.current;setSlideIdxSync(idx);
       setStatuses(prev=>{const n={...prev};cur.forEach((s,i)=>{if(i===idx)n[s.id]="proposing";else if(n[s.id]!=="done")n[s.id]="pending";});return n;});
-      const slide=cur[idx];
-      const prompt=slide.layout==="title"
-        ?"Ehdota kansidian sisältö:\n- Otsikko\n- Tagline (1 lause)\n- Meta (pvm | org)\n- Projektipäällikkö\nKysy: \"Sopiiko?\""
-        :`Ehdota sisältö dialle "${slide.label}" (${LAYOUT_DESC[slide.layout]||slide.layout}).\nTarjoa 2 vaihtoehtoa. Älä käytä JSON:ia.`;
-      const r=await api([{role:"user",content:`[DIA ${idx+1}/${cur.length} — ${slide.label}]\n${prompt}`}],"VAIHE: Diojen sisältö.\n"+buildContext());
+      const slide=cur[idx];const fi=langRef.current==="fi";
+      // Layout-kohtaiset ohjeet
+      const layoutPrompts={
+        title:fi?"Ehdota kansidian sisältö:\n- Otsikko (lyhyt, vaikuttava)\n- Tagline (1 lause joka tiivistää projektin arvon)\n- Meta (pvm | org)\n- Projektipäällikkö"
+          :"Propose title slide:\n- Title (short, impactful)\n- Tagline (1 sentence summarizing project value)\n- Meta (date | org)\n- Project lead",
+        table:fi?`Ehdota TAULUKKO dialle "${slide.label}".\n\nTAULUKON PITÄÄ sisältää:\n- Selkeät sarakkeet vertailua varten\n- Konkreettisia lukuja (EUR, viikkoja, prosentteja)\n- Jos vertailu: lisää "Suositus"-sarake tai korosta paras vaihtoehto\n- Johtopäätös/suositus taulukon jälkeen\n\nÄlä tee bullet-listaa — tee OIKEA taulukko sarakkeilla ja riveillä.`
+          :`Propose TABLE for "${slide.label}".\n\nTABLE MUST include:\n- Clear columns for comparison\n- Concrete numbers (EUR, weeks, percentages)\n- If comparison: add "Recommendation" column or highlight best option\n- Conclusion/recommendation after table`,
+        gantt:fi?`Ehdota Gantt-kaavio dialle "${slide.label}".\n- Listaa KAIKKI vaiheet yksi kerrallaan (start/end viikkoina)\n- Merkitse kriittinen polku\n- Huomioi riippuvuudet vaiheiden välillä\n- Lisää milestones jos relevantteja`
+          :`Propose Gantt chart for "${slide.label}".\n- List ALL phases one by one (start/end in weeks)\n- Mark critical path\n- Consider dependencies\n- Add milestones if relevant`,
+        cards:fi?`Ehdota kortit dialle "${slide.label}".\n- Jokaisessa kortissa: ikoni, otsikko, kuvaus, vakavuus (high/medium/low)\n- ÄLÄ vain listaa — ANALYSOI ja priorisoi\n- Ehdota mitigaatio jokaiselle\n- Kerro mikä on kriittisin ja miksi`
+          :`Propose cards for "${slide.label}".\n- Each card: icon, title, description, severity\n- Don't just list — ANALYZE and prioritize\n- Suggest mitigation for each\n- State which is most critical and why`,
+        "two-col":fi?`Ehdota kaksipalstainen dia "${slide.label}".\n- Vasen ja oikea puoli selkeästi erotetut\n- Hyödynnä vertailua: pros/cons, nykytila/tavoite, vaihtoehto A/B`
+          :`Propose two-column slide "${slide.label}".\n- Left and right clearly separated\n- Use comparison: pros/cons, current/target, option A/B`,
+        bullets:fi?`Ehdota sisältö dialle "${slide.label}".\n\nTÄRKEÄÄ:\n- Jos datassa on lukuja tai vertailuja → EHDOTA taulukkoa (table) tai kortteja (cards) tämän sijaan ja kerro miksi\n- Jos teet bullet-listan, tee se ANALYYTTISESTI: johtopäätökset, suositukset, ei pelkkä datan toisto\n- Jokainen bullet = oma väite tai insight, ei pelkkä fakta`
+          :`Propose content for "${slide.label}".\n\nIMPORTANT:\n- If data has numbers or comparisons → SUGGEST table or cards instead and explain why\n- If bullet list, make it ANALYTICAL: conclusions, recommendations, not just data repetition\n- Each bullet = a claim or insight, not just a fact`,
+      };
+      const prompt=layoutPrompts[slide.layout]||layoutPrompts.bullets;
+      const fullPrompt=`[DIA ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}\n\nTarjoa 2 vaihtoehtoa. Kerro kumpi on suosituksesi. Älä käytä JSON:ia.`;
+      const r=await api([{role:"user",content:fullPrompt}],"VAIHE: Diojen sisältö.\n"+buildContext());
       const cleanText=strip(r);lastProposalRef.current[slide.id]=cleanText;
       addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
       addMsg("assistant",cleanText);
@@ -351,7 +377,7 @@ export default function App() {
       if(editingSlide!==null){setEditingSlide(null);addMsg("assistant","✓ "+slide.label+" "+(isCancel?T[langRef.current].noChanges:T[langRef.current].updated));showReview(cur);return;}
       const next=idx+1;
       if(next<cur.length){setSlideIdxSync(next);addMsg("assistant","✓ "+slide.label+" "+T[langRef.current].saved);setTimeout(()=>proposeSlide(next,cur),300);}
-      else{addMsg("assistant","✓ "+slide.label+" "+T[langRef.current].saved);showReview(cur);}
+      else{addMsg("assistant","✓ "+slide.label+" "+T[langRef.current].saved);await runConsistencyCheck(cur);}
       return;
     }
 
@@ -373,6 +399,28 @@ export default function App() {
         :"Make requested changes and show new version. If you don't understand what the user wants, ASK a clarifying question instead of repeating the same content."}`}],
       "VAIHE: Diojen sisältö.\n"+buildContext());
     const cleanText=strip(r);lastProposalRef.current[slide.id]=cleanText;addMsg("assistant",cleanText);
+  }
+
+  // ═══ JOHDONMUKAISUUSTARKISTUS ═══
+  async function runConsistencyCheck(slidesArr){
+    const cur=slidesArr||slidesRef.current;const fi=langRef.current==="fi";
+    addDivider(fi?"🔍 Tarkistus":"🔍 Review");
+    addMsg("assistant",fi?"Tarkistan diojen johdonmukaisuuden...":"Checking slide consistency...");
+    try{
+      // Kootaan kaikkien diojen sisällöt tiivistetysti
+      const slidesSummary=cur.map((s,i)=>{
+        const proposal=(lastProposalRef.current[s.id]||"").substring(0,400);
+        return `DIA ${i+1}: "${s.label}" (${s.layout})\n${proposal}`;
+      }).join("\n\n---\n\n");
+
+      const checkPrompt=fi
+        ?`Alla on kaikki ${cur.length} dian sisällöt. Tee LYHYT laaduntarkistus:\n\n1. RISTIRIIDAT: Onko diojen välillä ristiriitaisia tietoja? (esim. eri luvut, eri suositukset, eri aikataulut)\n2. PUUTTEET: Puuttuuko jotain olennaista mitä materiaalien perusteella pitäisi olla?\n3. PARANNUSEHDOTUKSET: 1-2 konkreettista ehdotusta (esim. "dia 3 voisi olla taulukko" tai "dia 5 puuttuu budjettiluvut")\n\nOle tiivis — max 5-8 riviä. Jos kaikki ok, sano se.\n\nDIAT:\n${slidesSummary.substring(0,3000)}`
+        :`Below are all ${cur.length} slide contents. Do a BRIEF quality check:\n\n1. CONTRADICTIONS: Any conflicting info between slides?\n2. GAPS: Anything missing that the source material suggests?\n3. SUGGESTIONS: 1-2 concrete improvements\n\nBe concise — max 5-8 lines. If all good, say so.\n\nSLIDES:\n${slidesSummary.substring(0,3000)}`;
+
+      const r=await api([{role:"user",content:checkPrompt}],"VAIHE: Laaduntarkistus.\n"+buildContext());
+      addMsg("assistant",strip(r));
+    }catch(e){console.log("Consistency check:",e);}
+    showReview(cur);
   }
 
   // ═══ REVIEW ═══
