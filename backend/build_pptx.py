@@ -20,30 +20,30 @@ if not os.path.exists(TEMPLATE_PATH):
 
 # Gofore värit
 C = {
-    "deepBlue": RGBColor(0x0C, 0x23, 0x40),
+    "deepBlue":    RGBColor(0x0C, 0x23, 0x40),
     "digitalBlue": RGBColor(0x1B, 0x6C, 0xA8),
-    "orange": RGBColor(0xE8, 0x52, 0x1A),
-    "mint": RGBColor(0x3B, 0xBF, 0xAD),
-    "white": RGBColor(0xFF, 0xFF, 0xFF),
-    "grey": RGBColor(0x8C, 0x9B, 0xAA),
-    "silver": RGBColor(0xD3, 0xD9, 0xDF),
-    "light": RGBColor(0xEE, 0xF1, 0xF3),
-    "red": RGBColor(0xC0, 0x39, 0x2B),
-    "yellow": RGBColor(0xE6, 0x7E, 0x22),
-    "green": RGBColor(0x27, 0xAE, 0x60),
+    "orange":      RGBColor(0xE8, 0x52, 0x1A),
+    "mint":        RGBColor(0x3B, 0xBF, 0xAD),
+    "white":       RGBColor(0xFF, 0xFF, 0xFF),
+    "grey":        RGBColor(0x8C, 0x9B, 0xAA),
+    "silver":      RGBColor(0xD3, 0xD9, 0xDF),
+    "light":       RGBColor(0xEE, 0xF1, 0xF3),
+    "red":         RGBColor(0xC0, 0x39, 0x2B),
+    "yellow":      RGBColor(0xE6, 0x7E, 0x22),
+    "green":       RGBColor(0x27, 0xAE, 0x60),
 }
 
 FONT = "Cadiz"
 
 # Layout indeksit templatessa
 L = {
-    "cover": 0,  # Cover slide circle only
-    "bullets": 5,  # Title + content simple
-    "two_col": 6,  # Title + content 2 column
-    "three_col": 7,  # Title + content 3 column
-    "timeline": 47,  # Headline + Timeline/table placeholder
-    "section": 29,  # Section Break Title dark blue
-    "end": 53,  # End slide simple
+    "cover":     0,   # Cover slide circle only
+    "bullets":   5,   # Title + content simple
+    "two_col":   6,   # Title + content 2 column
+    "three_col": 7,   # Title + content 3 column
+    "timeline":  47,  # Headline + Timeline/table placeholder
+    "section":   29,  # Section Break Title dark blue
+    "end":       53,  # End slide simple
 }
 
 
@@ -123,14 +123,15 @@ def build_bullets_slide(prs, d, def_label):
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
 
+    used = {0}  # Otsikko aina käytössä
     content_ph = get_ph(slide, 16) or get_ph(slide, 10)
     if content_ph and d.get("bullets"):
+        used.add(content_ph.placeholder_format.idx)
         tf = content_ph.text_frame
         tf.clear()
         tf.word_wrap = True
-        bullets = d["bullets"][:10]  # Max 10 kohtaa
+        bullets = d["bullets"][:10]
 
-        # Auto-resize: pienennä fonttia jos paljon sisältöä
         total_chars = sum(len(b) for b in bullets)
         if len(bullets) > 7 or total_chars > 600:
             font_size = 11
@@ -140,10 +141,7 @@ def build_bullets_slide(prs, d, def_label):
             font_size = 14
 
         for i, bullet in enumerate(bullets):
-            if i == 0:
-                p = tf.paragraphs[0]
-            else:
-                p = tf.add_paragraph()
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.level = 0
             p.space_after = Pt(2)
             run = p.add_run()
@@ -156,9 +154,8 @@ def build_bullets_slide(prs, d, def_label):
         note_ph = get_ph(slide, 13)
         if note_ph:
             set_text(note_ph.text_frame, d["note"], font_size=11, color=C["grey"])
+            used.add(13)
 
-    used = {0, 16, 10}
-    if d.get("note"): used.add(13)
     hide_unused_ph(slide, used)
 
 
@@ -285,8 +282,7 @@ def build_cards_slide(prs, d, def_label):
 
         # Kuvaus
         if card.get("desc"):
-            desc_box = slide.shapes.add_textbox(Inches(x + 0.15), Inches(top_y + 0.8), Inches(card_w - 0.3),
-                                                Inches(card_h - 1.0))
+            desc_box = slide.shapes.add_textbox(Inches(x + 0.15), Inches(top_y + 0.8), Inches(card_w - 0.3), Inches(card_h - 1.0))
             tf2 = desc_box.text_frame
             tf2.word_wrap = True
             p2 = tf2.paragraphs[0]
@@ -321,9 +317,9 @@ def build_table_slide(prs, d, def_label):
     n_cols = len(cols)
     n_rows = len(rows) + 1  # +1 header
 
-    left = Inches(0.4)
-    top = Inches(1.3)
-    width = Inches(12.3)
+    left   = Inches(0.4)
+    top    = Inches(1.3)
+    width  = Inches(12.3)
     height = Inches(0.4 * n_rows)
 
     table = slide.shapes.add_table(n_rows, n_cols, left, top, width, height).table
@@ -377,17 +373,16 @@ def build_gantt_slide(prs, d, def_label):
     frozen_week = d.get("frozenWeek")
     phases = d.get("phases", [])
 
-    # Gantt-alueen koordinaatit (tuumina)
-    tl = 0.4  # left
-    tt = 1.35  # top
-    pcw = 3.0  # phase name column width
-    rh = 0.40  # row height
+    # Gantt-alueen koordinaatit — HUOM: alkaa alempaa niin otsikko ei peitä
+    tl = 0.4   # left
+    tt = 2.0   # top — otsikko-placeholder loppuu ~1.86", jätetään marginaali
+    pcw = 3.2  # phase name column width
+    rh = 0.38  # row height
     hh = 0.32  # header height
     avail_w = 12.5 - tl - pcw
-    wcw = avail_w / total_weeks  # week column width
+    wcw = avail_w / total_weeks
 
-    def add_rect(slide, x, y, w, h, fill_rgb, text=None, font_size=9, bold=False, text_color=None,
-                 align=PP_ALIGN.CENTER):
+    def add_rect(slide, x, y, w, h, fill_rgb, text=None, font_size=9, bold=False, text_color=None, align=PP_ALIGN.CENTER):
         shape = slide.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
         shape.fill.solid()
         shape.fill.fore_color.rgb = fill_rgb
@@ -414,10 +409,11 @@ def build_gantt_slide(prs, d, def_label):
         x = tl + pcw + w * wcw
         is_frozen = frozen_week and (w + 1 == frozen_week)
         fill = C["red"] if is_frozen else C["deepBlue"]
-        label = f"Vk{w + 1}" + (" 🔒" if is_frozen else "")
+        label = f"Vk{w+1}" + (" 🔒" if is_frozen else "")
         add_rect(slide, x, tt, wcw, hh, fill, label, font_size=8, bold=True)
 
-    # Faasit
+    # Faasit — SELKEÄT VÄRIT: sininen = normaali, oranssi = kriittinen
+    has_critical = any(ph.get("critical") for ph in phases)
     for ri, ph in enumerate(phases):
         y = tt + hh + ri * rh
         row_bg = C["light"] if ri % 2 == 0 else C["white"]
@@ -427,7 +423,7 @@ def build_gantt_slide(prs, d, def_label):
         prefix = "⬥ " if is_crit else ""
 
         add_rect(slide, tl, y, pcw, rh, name_bg,
-                 prefix + ph.get("name", ""), font_size=10, bold=is_crit,
+                 prefix + ph.get("name", ""), font_size=9, bold=is_crit,
                  text_color=name_color, align=PP_ALIGN.LEFT)
 
         for w in range(total_weeks):
@@ -435,12 +431,39 @@ def build_gantt_slide(prs, d, def_label):
             active = ph.get("start", 0) <= w + 1 <= ph.get("end", 0)
             is_frozen = frozen_week and (w + 1 == frozen_week)
             if active:
-                fill = C["orange"] if is_crit else (C["digitalBlue"] if w % 2 == 0 else C["mint"])
+                # Selkeä logiikka: oranssi = kriittinen polku, sininen = normaali
+                fill = C["orange"] if is_crit else C["digitalBlue"]
             elif is_frozen:
                 fill = RGBColor(0xFF, 0xE0, 0xD6)
             else:
                 fill = row_bg
             add_rect(slide, x, y, wcw, rh, fill)
+
+    # ═══ SELITE (legend) ═══
+    legend_y = tt + hh + len(phases) * rh + 0.25
+    legend_items = [("Normaali vaihe", C["digitalBlue"])]
+    if has_critical:
+        legend_items.append(("Kriittinen polku", C["orange"]))
+    if frozen_week:
+        legend_items.append(("Muutosjäädytys", C["red"]))
+
+    lx = tl
+    for label, color in legend_items:
+        # Väripallo
+        dot = slide.shapes.add_shape(1, Inches(lx), Inches(legend_y), Inches(0.18), Inches(0.18))
+        dot.fill.solid()
+        dot.fill.fore_color.rgb = color
+        dot.line.fill.background()
+        # Teksti
+        tb = slide.shapes.add_textbox(Inches(lx + 0.22), Inches(legend_y - 0.02), Inches(1.8), Inches(0.22))
+        tf = tb.text_frame
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = label
+        r.font.name = FONT
+        r.font.size = Pt(8)
+        r.font.color.rgb = C["grey"]
+        lx += 2.2
 
 
 def build_end_slide(prs):
@@ -519,7 +542,6 @@ if __name__ == "__main__":
         )
     except Exception as e:
         import traceback
-
         traceback.print_exc()
         print(f"ERROR:{e}", file=sys.stderr)
         sys.exit(1)
