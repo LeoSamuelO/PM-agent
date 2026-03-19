@@ -110,19 +110,55 @@ function shouldSearch(text) {
 }
 const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen",bar_chart:"pylväskaavio",pie_chart:"piirakkakaavio",line_chart:"viivakaavio"};
 
+// ═══ FETCH WITH TIMEOUT + RETRY ═══
+async function fetchWithRetry(url, options, { timeout = 90000, retries = 2 } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const r = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return r;
+    } catch (err) {
+      clearTimeout(timer);
+      const isTimeout = err.name === "AbortError";
+      const isNetwork = err.message?.includes("Failed to fetch") || err.message?.includes("NetworkError");
+      if (attempt < retries && (isTimeout || isNetwork)) {
+        console.log(`⏳ Retry ${attempt + 1}/${retries} (${isTimeout ? "timeout" : "network"})...`);
+        await new Promise(ok => setTimeout(ok, 1000 * (attempt + 1))); // Backoff: 1s, 2s
+        continue;
+      }
+      if (isTimeout) throw new Error("Yhteys aikakatkaistiin — yritä uudelleen.");
+      throw err;
+    }
+  }
+}
+
 async function callAPI(messages, systemExtra, forceSearch, lang) {
   const system = systemExtra ? getSystem(lang||"fi")+"\n\n"+systemExtra : getSystem(lang||"fi");
   // Tarkista kaikkien viimeisten viestien sisältö — ei vain viimeistä käyttäjäviestiä
   const recentTexts = messages.slice(-3).map(m => m.content).join(" ");
   const useSearch = forceSearch || shouldSearch(recentTexts);
-  const r = await fetch(API+"/api/chat",{
+  const r = await fetchWithRetry(API+"/api/chat",{
     method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
     body:JSON.stringify({messages,system,useSearch}),
-  });
+  }, { timeout: useSearch ? 120000 : 90000 }); // Search-kutsut saavat enemmän aikaa
   const d = await r.json();
   if(r.status===401){localStorage.removeItem("pm_token");window.location.reload();}
   if(d.error)throw new Error(d.error);
   return d.text;
+}
+
+// ═══ LASKUJEN VERIFIOINTI ═══
+async function verifyNumbers(text) {
+  try {
+    const r = await fetchWithRetry(API+"/api/verify-numbers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-session-token": localStorage.getItem("pm_token") || "" },
+      body: JSON.stringify({ text }),
+    }, { timeout: 5000, retries: 0 });
+    return await r.json();
+  } catch { return { corrections: [], verified: true }; }
 }
 
 async function convertToJSON(slideLabel, layout, proposalText, lang) {
@@ -212,6 +248,30 @@ export default function App() {
 
   useEffect(()=>{document.title="PM-Agent | Gofore";},[]);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,busy]);
+
+  // ═══ KEEPALIVE: Pidä backend hereillä + tarkista session ═══
+  useEffect(()=>{
+    if(!authed)return;
+    let alive=true;
+    const ping=async()=>{
+      if(!alive)return;
+      try{
+        const r=await fetch(API+"/health",{signal:AbortSignal.timeout(5000)});
+        if(!r.ok)console.warn("Health check failed:",r.status);
+      }catch(e){console.warn("Keepalive ping failed:",e.message);}
+      // Tarkista token voimassaolo
+      try{
+        const r2=await fetch(API+"/api/verify-numbers",{
+          method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
+          body:JSON.stringify({text:""}),signal:AbortSignal.timeout(5000)});
+        if(r2.status===401){localStorage.removeItem("pm_token");setAuthed(false);}
+      }catch{}
+    };
+    // Ping heti ja sitten joka 4 min (token 8h, Render idle 15min)
+    ping();
+    const iv=setInterval(ping,4*60*1000);
+    return()=>{alive=false;clearInterval(iv);};
+  },[authed]);
   function setScreenSync(v){setScreen(v);screenRef.current=v;}
   function setSlideIdxSync(v){setSlideIdx(v);slideIdxRef.current=v;}
   const addMsg=useCallback((role,content)=>setMsgs(p=>[...p,{role,content}]),[]);
@@ -276,7 +336,17 @@ export default function App() {
       ?`Fokus: "${userText.trim()}"\n\nAnalysoi materiaali ja listaa 4-6 HAVAINTOA:\n- Jokaisessa havainnossa: FAKTA + JOHTOPÄÄTÖS + SUOSITUS/KYSYMYS\n- Jos materiaalissa on valintoja tai vaihtoehtoja → ota kantaa, kerro suosituksesi\n- Jos löydät ristiriitoja tai puutteita → nosta ne esiin\n- Jos datassa on lukuja → laske: ROI, takaisinmaksu, vertailut\n- ÄLÄ vain toista mitä materiaalissa lukee — ANALYSOI\n\nÄLÄ ehdota diarakennetta. Kysy: "Hyväksytkö nämä havainnot?"`
       :`Focus: "${userText.trim()}"\n\nAnalyze material and list 4-6 INSIGHTS:\n- Each: FACT + CONCLUSION + RECOMMENDATION/QUESTION\n- If choices/alternatives → take a position, give recommendation\n- If contradictions or gaps → raise them\n- If numbers → calculate: ROI, payback, comparisons\n- Don't just restate the material — ANALYZE\n\nDon't suggest slide structure. Ask: "Do you approve these insights?"`;
     const r=await api([{role:"user",content:insightPrompt}],"VAIHE: Havainnot.\n"+buildContext());
-    addMsg("assistant",strip(r));
+    const insightText=strip(r);
+    addMsg("assistant",insightText);
+    // Tarkista AI:n laskelmat oikealla matematiikalla
+    const numCheck=await verifyNumbers(insightText);
+    if(!numCheck.verified&&numCheck.corrections?.length>0){
+      const fi=langRef.current==="fi";
+      const fixes=numCheck.corrections.map(c=>
+        `• ${c.expression} → oikea tulos: ${c.actual} (AI sanoi: ${c.claimed})`).join("\n");
+      addMsg("assistant",(fi?"⚠️ Laskuvirheitä havaittu:\n":"⚠️ Calculation errors found:\n")+fixes+
+        (fi?"\n\nKorjaan nämä automaattisesti lopullisiin dioihin.":"\n\nThese will be auto-corrected in final slides."));
+    }
   }
 
   // ═══ VAIHE 3 ═══
@@ -446,7 +516,17 @@ export default function App() {
         // Ei automaattisesti vaihda — AI:n pitää ehdottaa se rakenteessa
       }
 
-      const slideData=await convertToJSON(slide.label,effectiveLayout,proposalText,langRef.current);
+      // Tarkista ja korjaa laskuvirheet ennen JSON-muunnosta
+      let verifiedText=proposalText;
+      const numCheck=await verifyNumbers(proposalText);
+      if(!numCheck.verified&&numCheck.corrections?.length>0){
+        for(const c of numCheck.corrections){
+          // Korvaa väärä tulos oikealla tekstissä
+          if(c.claimed&&c.actual){verifiedText=verifiedText.replace(c.claimed,c.actual);}
+        }
+        lastProposalRef.current[slide.id]=verifiedText;
+      }
+      const slideData=await convertToJSON(slide.label,effectiveLayout,verifiedText,langRef.current);
       if(slideData){collectedRef.current={...collectedRef.current,[slide.id]:slideData};}
       setStatuses(prev=>({...prev,[slide.id]:"done"}));
       // Tarkista sisältääkö dia päätöksiä — tallenna ne
@@ -636,7 +716,14 @@ export default function App() {
       else if(s==="structure")await runStructureConfirm(apiText);
       else if(s==="planning")await runPlanning(apiText);
       else if(s==="review")await runReview(apiText);
-    }catch(e){addMsg("assistant","⚠️ "+e.message);}setBusy(false);
+    }catch(e){
+      const fi=langRef.current==="fi";
+      const isTimeout=e.message?.includes("aikakatk")||e.message?.includes("AbortError");
+      const isNetwork=e.message?.includes("Failed to fetch")||e.message?.includes("NetworkError");
+      if(isTimeout)addMsg("assistant",fi?"⚠️ Vastaus kesti liian kauan. Yritä uudelleen — lähetä sama viesti.":"⚠️ Response timed out. Try again — resend the same message.");
+      else if(isNetwork)addMsg("assistant",fi?"⚠️ Yhteys katkesi. Tarkista nettiyhteys ja yritä uudelleen.":"⚠️ Connection lost. Check your internet and try again.");
+      else addMsg("assistant","⚠️ "+e.message);
+    }setBusy(false);
   }
 
   async function doLogin(){if(!pwInput)return;try{const r=await fetch(API+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwInput})});const d=await r.json();if(d.token){localStorage.setItem("pm_token",d.token);setAuthed(true);}else setPwError(true);}catch{setPwError(true);}}

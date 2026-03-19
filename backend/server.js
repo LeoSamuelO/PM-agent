@@ -34,7 +34,110 @@ app.post("/api/login", (req, res) => {
   res.json({ token });
 });
 
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/health", (req, res) => res.json({ status: "ok", ts: Date.now() }));
+
+// ── Laskujen verifiointi ─────────────────────────────────────────
+// Etsii AI:n tekstistä aritmeettisia väittämiä ja tarkistaa ne oikealla matematiikalla
+app.post("/api/verify-numbers", (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.json({ corrections: [], verified: true });
+
+  const corrections = [];
+
+  // Pattern 1: "X - Y = Z" tai "X + Y = Z" tai "X * Y = Z" tai "X / Y = Z"
+  // Tukee k/M/milj suffixeja: "420k - 42k = 228k"
+  const parseNum = (s) => {
+    if (!s) return NaN;
+    let n = s.replace(/\s/g, "").replace(",", ".");
+    const multipliers = { k: 1000, K: 1000, "t€": 1000, M: 1e6, milj: 1e6, "M€": 1e6 };
+    for (const [suffix, mult] of Object.entries(multipliers)) {
+      if (n.endsWith(suffix)) { n = n.slice(0, -suffix.length); return parseFloat(n) * mult; }
+    }
+    // Prosentti
+    if (n.endsWith("%")) return parseFloat(n.slice(0, -1));
+    return parseFloat(n);
+  };
+
+  const formatNum = (n, original) => {
+    if (!original) return String(n);
+    // Palauta samassa yksikössä kuin alkuperäinen
+    if (/k$/i.test(original.trim())) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k";
+    if (/M€?$|milj/i.test(original.trim())) return (n / 1e6).toFixed(2) + "M";
+    if (/%$/.test(original.trim())) return n.toFixed(1) + "%";
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(2);
+  };
+
+  // Etsii: "270k/v - 42k/v = 228k/v" tai "515 / 228 = 2,3"
+  const calcPatterns = [
+    // a OP b = c
+    /(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*([+\-\−×x*÷\/])\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*[=≈]\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)/g,
+    // a OP b OP c = d (ketjulaskut)
+    /(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*([+\-\−×x*÷\/])\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*([+\-\−×x*÷\/])\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*[=≈]\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)/g,
+  ];
+
+  const doOp = (a, op, b) => {
+    const ops = { "+": (x, y) => x + y, "-": (x, y) => x - y, "−": (x, y) => x - y,
+      "*": (x, y) => x * y, "×": (x, y) => x * y, "x": (x, y) => x * y,
+      "/": (x, y) => y !== 0 ? x / y : NaN, "÷": (x, y) => y !== 0 ? x / y : NaN };
+    return (ops[op] || (() => NaN))(a, b);
+  };
+
+  // 3-osaiset laskut: a op b op c = d
+  let m;
+  const pat3 = /(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*([+\-\−×x*÷\/])\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*([+\-\−×x*÷\/])\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*[=≈]\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)/g;
+  while ((m = pat3.exec(text)) !== null) {
+    const [full, aStr, op1, bStr, op2, cStr, dStr] = m;
+    const a = parseNum(aStr), b = parseNum(bStr), c = parseNum(cStr), claimed = parseNum(dStr);
+    if ([a, b, c, claimed].some(isNaN)) continue;
+    const actual = doOp(doOp(a, op1, b), op2, c);
+    if (isNaN(actual)) continue;
+    const tolerance = Math.max(Math.abs(claimed) * 0.02, 0.5);
+    if (Math.abs(actual - claimed) > tolerance) {
+      corrections.push({
+        expression: full.trim(),
+        claimed: formatNum(claimed, dStr),
+        actual: formatNum(actual, dStr),
+        claimedRaw: claimed,
+        actualRaw: actual,
+      });
+    }
+  }
+
+  // 2-osaiset laskut: a op b = c
+  const pat2 = /(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*([+\-\−×x*÷\/])\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)\s*[=≈]\s*(\d[\d\s,.']*(?:k|M|milj|M€|t€|%)?)/g;
+  while ((m = pat2.exec(text)) !== null) {
+    const [full, aStr, op, bStr, cStr] = m;
+    // Ohita jos tämä kohta on jo löydetty 3-osaisena
+    if (corrections.some(c => c.expression.includes(aStr) && c.expression.includes(bStr))) continue;
+    const a = parseNum(aStr), b = parseNum(bStr), claimed = parseNum(cStr);
+    if ([a, b, claimed].some(isNaN)) continue;
+    const actual = doOp(a, op, b);
+    if (isNaN(actual)) continue;
+    const tolerance = Math.max(Math.abs(claimed) * 0.02, 0.5);
+    if (Math.abs(actual - claimed) > tolerance) {
+      corrections.push({
+        expression: full.trim(),
+        claimed: formatNum(claimed, cStr),
+        actual: formatNum(actual, cStr),
+        claimedRaw: claimed,
+        actualRaw: actual,
+      });
+    }
+  }
+
+  // Pattern: prosenttilaskut "X on Y% Z:stä" → tarkista X = Z * Y/100
+  const pctPat = /(\d[\d\s,.']*(?:k|M)?)\s+(?:on|=|eli)\s+(\d[\d,.]+)\s*%\s+(?:arvosta|summasta|of|kokonais)/gi;
+  while ((m = pctPat.exec(text)) !== null) {
+    // Tämä on informatiivinen — ei korjattava, mutta voidaan merkitä tulevaisuudessa
+  }
+
+  res.json({
+    corrections,
+    verified: corrections.length === 0,
+    count: corrections.length,
+  });
+});
 
 app.post("/api/extract-file", async (req, res) => {
   const { base64, mimeType, fileName } = req.body;
@@ -129,10 +232,22 @@ async function findPython() {
 
 function runPython(cmd, script, jsonStr, outPath) {
   return new Promise((resolve, reject) => {
-    // Syötä JSON stdin:istä — ei argumenttirajoituksia
-    const proc = spawn(cmd, [script, "--stdin", outPath], {
+    // Isoilla JSON-syötteillä stdin voi blokata → kirjoita temp-tiedostoon
+    const jsonPath = outPath.replace(".pptx", ".json");
+    let useTempFile = jsonStr.length > 50000; // >50KB → tiedosto
+    let args;
+
+    if (useTempFile) {
+      fs.writeFileSync(jsonPath, jsonStr, "utf-8");
+      args = [script, "--file", jsonPath, outPath];
+      console.log("📦 Python via temp file:", jsonStr.length, "bytes");
+    } else {
+      args = [script, "--stdin", outPath];
+    }
+
+    const proc = spawn(cmd, args, {
       cwd: path.dirname(script),
-      timeout: 30000,
+      timeout: 60000, // 60s (oli 30s — pitkät esitykset voivat kestää)
     });
 
     let stdout = "", stderr = "";
@@ -140,15 +255,23 @@ function runPython(cmd, script, jsonStr, outPath) {
     proc.stderr.on("data", d => stderr += d);
 
     proc.on("close", code => {
+      // Siivoa temp-tiedosto
+      if (useTempFile) fs.unlink(jsonPath, () => {});
       console.log("Python exit:", code, "stdout:", stdout.trim());
       if (stderr) console.error("Python stderr:", stderr.trim());
       code === 0 ? resolve(stdout) : reject(new Error(stderr || "exit " + code));
     });
-    proc.on("error", reject);
+    proc.on("error", (err) => {
+      if (useTempFile) fs.unlink(jsonPath, () => {});
+      reject(err);
+    });
 
-    // Kirjoita JSON stdiniin
-    proc.stdin.write(jsonStr);
-    proc.stdin.end();
+    // Kirjoita stdin vain jos ei käytetä temp-tiedostoa
+    if (!useTempFile) {
+      proc.stdin.on("error", () => {}); // Estä EPIPE-kaatuminen
+      proc.stdin.write(jsonStr);
+      proc.stdin.end();
+    }
   });
 }
 
