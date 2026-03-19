@@ -451,17 +451,17 @@ export default function App() {
     addDivider(fi?"🔍 Tarkistus":"🔍 Review");
     addMsg("assistant",fi?"Tarkistan diojen johdonmukaisuuden...":"Checking slide consistency...");
     try{
-      // Kootaan kaikkien diojen sisällöt tiivistetysti
+      // Anna enemmän sisältöä per dia — 800 merkkiä, ei vain 400
       const slidesSummary=cur.map((s,i)=>{
-        const proposal=(lastProposalRef.current[s.id]||"").substring(0,400);
-        return `DIA ${i+1}: "${s.label}" (${s.layout})\n${proposal}`;
+        const proposal=(lastProposalRef.current[s.id]||"").substring(0,800);
+        return `DIA ${i+1}/${cur.length}: "${s.label}" (${s.layout})\n${proposal}`;
       }).join("\n\n---\n\n");
 
       const checkPrompt=fi
-        ?`Alla on kaikki ${cur.length} dian sisällöt. Tee LYHYT laaduntarkistus:\n\n1. RISTIRIIDAT: Onko diojen välillä ristiriitaisia tietoja? (esim. eri luvut, eri suositukset, eri aikataulut)\n2. PUUTTEET: Puuttuuko jotain olennaista mitä materiaalien perusteella pitäisi olla?\n3. PARANNUSEHDOTUKSET: 1-2 konkreettista ehdotusta (esim. "dia 3 voisi olla taulukko" tai "dia 5 puuttuu budjettiluvut")\n\nOle tiivis — max 5-8 riviä. Jos kaikki ok, sano se.\n\nDIAT:\n${slidesSummary.substring(0,3000)}`
-        :`Below are all ${cur.length} slide contents. Do a BRIEF quality check:\n\n1. CONTRADICTIONS: Any conflicting info between slides?\n2. GAPS: Anything missing that the source material suggests?\n3. SUGGESTIONS: 1-2 concrete improvements\n\nBe concise — max 5-8 lines. If all good, say so.\n\nSLIDES:\n${slidesSummary.substring(0,3000)}`;
+        ?`Alla on kaikkien ${cur.length} dian sisällöt.\n\nTarkista VAIN nämä:\n1. LUKURISTIRIIDAT: Esiintyykö SAMA tieto eri luvuilla eri dioilla? (esim. budjetti 420k dialla 3 mutta 450k dialla 5). Listaa VAIN varmat ristiriidat joissa SAMA asia on eri numerolla.\n2. SUOSITUSRISTIRIIDAT: Suositellaanko eri dioilla eri toimittajaa/vaihtoehtoa?\n\nTÄRKEÄÄ:\n- ÄLÄ väitä diojen puuttuvan — kaikki ${cur.length} diaa ovat olemassa\n- ÄLÄ ehdota uusia dioja\n- ÄLÄ keksi ongelmia jotka eivät ole selkeitä\n- Jos et löydä VARMOJA ristiriitoja, sano: "Tarkistus OK — ei ristiriitoja havaittu."\n- Max 3-5 riviä\n\nDIAT:\n${slidesSummary.substring(0,4000)}`
+        :`Below are all ${cur.length} slide contents.\n\nCheck ONLY:\n1. NUMBER CONTRADICTIONS: Does the SAME fact appear with different numbers on different slides?\n2. RECOMMENDATION CONTRADICTIONS: Do different slides recommend different vendors/options?\n\nIMPORTANT:\n- Do NOT claim slides are missing — all ${cur.length} exist\n- Do NOT suggest new slides\n- Do NOT invent problems\n- If no CERTAIN contradictions found, say: "Check OK — no contradictions found."\n- Max 3-5 lines\n\nSLIDES:\n${slidesSummary.substring(0,4000)}`;
 
-      const r=await api([{role:"user",content:checkPrompt}],"VAIHE: Laaduntarkistus.\n"+buildContext());
+      const r=await api([{role:"user",content:checkPrompt}],"VAIHE: Laaduntarkistus. ÄLÄ keksi ongelmia.",false,langRef.current);
       addMsg("assistant",strip(r));
     }catch(e){console.log("Consistency check:",e);}
     showReview(cur);
