@@ -52,9 +52,19 @@ SÄÄNNÖT:
 3. Ole ytimekäs, max 2-3 kappaletta.
 4. Käsittele VAIN pyydetty asia.
 5. ÄLÄ ARVAA päivämääriä tai lukuja. Epävarma → käytä web-hakua.
-6. Ole RATKAISUKESKEINEN: Älä vain toista dataa — analysoi, vertaile, tee johtopäätöksiä ja suosituksia. Jos materiaalissa on ongelma tai valinta, ota kantaa ja perustele.
-7. EHDOTA KUVAAJIA: Kun datassa on lukuja, vertailuja tai trendejä, ehdota taulukkoa (table), Gantt-kaaviota tai korttinäkymää (cards). Älä laita lukuja bullet-listaan jos taulukko olisi selkeämpi.
-8. Tarjoa 2 vaihtoehtoa — mutta kerro kumpi on suosituksesi ja miksi.
+6. Ole RATKAISUKESKEINEN: Analysoi, vertaile, tee johtopäätöksiä. Ota kantaa ja perustele.
+7. LASKE AINA kun materiaalissa on lukuja: ROI, takaisinmaksu, säästöt, vertailut. Näytä laskukaava ja tulos. Esim: "Säästö: 270k/v - 42k/v lisenssit = 228k/v netto → takaisinmaksu 515k / 228k = 2,3 vuotta".
+8. KÄYTÄ KUVAAJIA: Käytettävissä olevat layoutit:
+   - table: taulukko (vertailut, luvut, budjetit)
+   - gantt: aikataulu
+   - cards: riskit, prioriteetit (2-4 korttia)
+   - two-col: vertailu (nykytila/tavoite, pros/cons)
+   - bar_chart: pylväskaavio (budjetti, kustannukset, vertailu)
+   - pie_chart: piirakkakaavio (jakaumat, osuudet)
+   - line_chart: viivakaavio (trendit, ennusteet)
+   - bullets: VAIN kun ei lukuja eikä vertailuja
+   Ehdota AINA sopivinta kuvaajaa. Älä laita lukuja bullet-listaan.
+9. Tarjoa 2 vaihtoehtoa — mutta kerro kumpi on suosituksesi ja miksi.
 ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja.`;
   return `You are an experienced project consultant at Gofore. ALWAYS communicate in English.
 TODAY IS: ${today}.
@@ -65,9 +75,19 @@ RULES:
 3. Be concise.
 4. Handle ONLY current topic.
 5. NEVER GUESS dates or numbers. Unsure → use web search.
-6. Be SOLUTION-ORIENTED: Don't just restate data — analyze, compare, draw conclusions and make recommendations. If there's a problem or choice, take a position and justify it.
-7. SUGGEST CHARTS: When data has numbers, comparisons or trends, suggest table, Gantt chart or cards layout. Don't put numbers in bullet lists when a table would be clearer.
-8. Offer 2 options — but tell which you recommend and why.
+6. Be SOLUTION-ORIENTED: Analyze, compare, draw conclusions. Take a position and justify.
+7. ALWAYS CALCULATE when data has numbers: ROI, payback, savings, comparisons. Show formula and result.
+8. USE CHARTS: Available layouts:
+   - table: comparisons, numbers, budgets
+   - gantt: timeline
+   - cards: risks, priorities (2-4 cards)
+   - two-col: comparison (current/target, pros/cons)
+   - bar_chart: bar chart (budget, costs, comparison)
+   - pie_chart: pie chart (distributions, shares)
+   - line_chart: line chart (trends, forecasts)
+   - bullets: ONLY when no numbers or comparisons
+   Always suggest the best chart type. Don't put numbers in bullet lists.
+9. Offer 2 options — but say which you recommend and why.
 NEVER produce [SLIDE_DATA] or [STRUCTURE_DATA] tags.`;
 }
 
@@ -88,7 +108,7 @@ function shouldSearch(text) {
   if (/(?:ensimmäinen|toinen|kolmas|viimeinen|first|second|third|last)\s+(?:ma|ti|ke|to|pe|la|su|mon|tue|wed|thu|fri|sat|sun)/i.test(text)) return true;
   return false;
 }
-const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen"};
+const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen",bar_chart:"pylväskaavio",pie_chart:"piirakkakaavio",line_chart:"viivakaavio"};
 
 async function callAPI(messages, systemExtra, forceSearch, lang) {
   const system = systemExtra ? getSystem(lang||"fi")+"\n\n"+systemExtra : getSystem(lang||"fi");
@@ -110,15 +130,20 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
     title:'{"title":"...","tagline":"...","meta":"...","projectLead":"..."}',
     bullets:'{"heading":"...","bullets":["kohta 1","kohta 2"],"note":""}',
     table:'{"heading":"...","columns":["S1","S2","S3"],"rows":[["a","b","c"]]}',
-    gantt:'{"heading":"...","totalWeeks":8,"frozenWeek":null,"phases":[{"name":"Vaihe 1","start":1,"end":2,"critical":false},{"name":"Vaihe 2","start":2,"end":4,"critical":true}]}',
+    gantt:'{"heading":"...","totalWeeks":8,"frozenWeek":null,"phases":[{"name":"Vaihe 1","start":1,"end":2,"critical":false}]}',
     cards:'{"heading":"...","cards":[{"icon":"⚠️","title":"...","desc":"...","level":"high"}]}',
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
+    bar_chart:'{"heading":"...","categories":["Q1","Q2","Q3"],"series":[{"name":"Budjetti","values":[100,200,150]},{"name":"Toteutunut","values":[90,210,140]}],"unit":"EUR","note":""}',
+    pie_chart:'{"heading":"...","slices":[{"label":"Osa A","value":40},{"label":"Osa B","value":35},{"label":"Osa C","value":25}],"unit":"%","note":""}',
+    line_chart:'{"heading":"...","categories":["Kk1","Kk2","Kk3"],"series":[{"name":"Trendi","values":[10,25,40]}],"unit":"","note":""}',
   };
-  const extra = layout === "gantt"
-    ? "\n\nGANTT ERITYISSÄÄNNÖT:\n- Jokainen mainittu alivaihe/tehtävä = OMA rivi phases-taulukossa (MAX 15 vaihetta)\n- ÄLÄ yhdistä vaiheita. Jos sisällössä on 10 vaihetta, JSON:ssa PITÄÄ olla 10 phase-objektia.\n- start/end = viikkonumeroita (1-pohjainen)\n- totalWeeks = projektin kokonaiskesto viikkoina. LASKE OIKEIN: 3kk=13vko, 6kk=26vko, 12kk=52vko\n- Jos projekti > 3kk, kaavio näytetään automaattisesti kuukausina — viikkonumerot toimivat silti\n- critical=true jos merkitty kriittiseksi poluksi tai riippuu muista vaiheista\n- Vaiheiden nimet max 35 merkkiä"
-    : "";
+  let extra = "";
+  if (layout === "gantt") extra = "\n\nGANTT: Jokainen vaihe = OMA rivi (MAX 15). start/end = viikkonumeroita. totalWeeks: 3kk=13, 6kk=26. Nimet max 35 merkkiä.";
+  else if (layout === "bar_chart") extra = "\n\nPYLVÄSKAAVIO: categories = X-akselin nimet. series = yksi tai useampi datasarja. values PITÄÄ olla lukuja (ei tekstiä). unit = yksikkö (EUR, %, kpl).";
+  else if (layout === "pie_chart") extra = "\n\nPIIRAKKAKAAVIO: slices = 3-8 palaa. value = numeerinen arvo. Prosentit tai absoluuttiset luvut.";
+  else if (layout === "line_chart") extra = "\n\nVIIVAKAAVIO: categories = X-akseli (ajanjaksot). series = trendilinjat. values = lukuja.";
   const r = await callAPI([{role:"user",content:
-    `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä tai yhdistä kohtia.${extra}`}],
+    `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä. Luvut AINA numeroina (ei "420k" vaan 420000).${extra}`}],
     "Olet JSON-muunnin. Vastaa VAIN validilla JSON-objektilla.", false, lang);
   try { const m=r.match(/\{[\s\S]*\}/); if(m)return JSON.parse(m[0]); }catch(e){console.error("JSON:",e);}
   return null;
@@ -275,17 +300,17 @@ export default function App() {
     if(!allLines.length)return null;
     const lines=[];let seen=false;
     for(const line of allLines){const n=parseInt(line.trim());if(n===1&&seen)break;seen=true;lines.push(line);}
-    const kw={kansi:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",cards:"cards","two-col":"two-col"};
+    const kw={kansi:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",cards:"cards","two-col":"two-col",pylväs:"bar_chart",bar_chart:"bar_chart",piirakka:"pie_chart",pie_chart:"pie_chart",viiva:"line_chart",line_chart:"line_chart",budjetti:"bar_chart",kustannus:"bar_chart",jakauma:"pie_chart",trendi:"line_chart"};
     return lines.map((line,i)=>{
       const iconM=line.match(/(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u);
       const stripped=line.replace(/^\s*\d+[\.\)]\s*/,"").replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu,"").trim();
       const parts=stripped.split(/\s*[-–—]\s*/);const label=parts[0]?.trim()||"Dia "+(i+1);
       const id=label.toLowerCase().replace(/[^a-zäöå0-9]/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"")||"dia_"+(i+1);
-      const layoutM=line.match(/[-–—]\s*(title|bullets|table|gantt|cards|two-col)/i)||line.match(/\((title|bullets|table|gantt|cards|two-col)\)/i);
+      const layoutM=line.match(/[-–—]\s*(title|bullets|table|gantt|cards|two-col|bar_chart|pie_chart|line_chart)/i)||line.match(/\((title|bullets|table|gantt|cards|two-col|bar_chart|pie_chart|line_chart)\)/i);
       let layout=layoutM?layoutM[1].toLowerCase():"bullets";
       if(!layoutM){for(const[k,v]of Object.entries(kw)){if(line.toLowerCase().includes(k)){layout=v;break;}}}
       if(i===0&&/kansi|cover/i.test(line))layout="title";
-      const layoutIcons={title:"🎯",bullets:"📋",table:"📊",gantt:"📅",cards:"⚠️","two-col":"📑"};
+      const layoutIcons={title:"🎯",bullets:"📋",table:"📊",gantt:"📅",cards:"⚠️","two-col":"📑",bar_chart:"📊",pie_chart:"🥧",line_chart:"📈"};
       return{id,label,icon:iconM?iconM[1]:(layoutIcons[layout]||"📄"),layout};
     });
   }
@@ -344,16 +369,22 @@ export default function App() {
       const layoutPrompts={
         title:fi?"Ehdota kansidian sisältö:\n- Otsikko (lyhyt, vaikuttava)\n- Tagline (1 lause joka tiivistää projektin arvon)\n- Meta (pvm | org)\n- Projektipäällikkö"
           :"Propose title slide:\n- Title (short, impactful)\n- Tagline (1 sentence summarizing project value)\n- Meta (date | org)\n- Project lead",
-        table:fi?`Ehdota TAULUKKO dialle "${slide.label}".\n\nTAULUKON PITÄÄ sisältää:\n- Selkeät sarakkeet vertailua varten\n- Konkreettisia lukuja (EUR, viikkoja, prosentteja)\n- Jos vertailu: lisää "Suositus"-sarake tai korosta paras vaihtoehto\n- Johtopäätös/suositus taulukon jälkeen\n\nÄlä tee bullet-listaa — tee OIKEA taulukko sarakkeilla ja riveillä.`
-          :`Propose TABLE for "${slide.label}".\n\nTABLE MUST include:\n- Clear columns for comparison\n- Concrete numbers (EUR, weeks, percentages)\n- If comparison: add "Recommendation" column or highlight best option\n- Conclusion/recommendation after table`,
-        gantt:fi?`Ehdota Gantt-kaavio dialle "${slide.label}".\n- Listaa KAIKKI vaiheet yksi kerrallaan (start/end viikkoina)\n- Merkitse kriittinen polku\n- Huomioi riippuvuudet vaiheiden välillä\n- Lisää milestones jos relevantteja`
-          :`Propose Gantt chart for "${slide.label}".\n- List ALL phases one by one (start/end in weeks)\n- Mark critical path\n- Consider dependencies\n- Add milestones if relevant`,
-        cards:fi?`Ehdota kortit dialle "${slide.label}".\n- Jokaisessa kortissa: ikoni, otsikko, kuvaus, vakavuus (high/medium/low)\n- ÄLÄ vain listaa — ANALYSOI ja priorisoi\n- Ehdota mitigaatio jokaiselle\n- Kerro mikä on kriittisin ja miksi`
-          :`Propose cards for "${slide.label}".\n- Each card: icon, title, description, severity\n- Don't just list — ANALYZE and prioritize\n- Suggest mitigation for each\n- State which is most critical and why`,
-        "two-col":fi?`Ehdota kaksipalstainen dia "${slide.label}".\n- Vasen ja oikea puoli selkeästi erotetut\n- Hyödynnä vertailua: pros/cons, nykytila/tavoite, vaihtoehto A/B`
-          :`Propose two-column slide "${slide.label}".\n- Left and right clearly separated\n- Use comparison: pros/cons, current/target, option A/B`,
-        bullets:fi?`Ehdota sisältö dialle "${slide.label}".\n\nTÄRKEÄÄ:\n- Jos datassa on lukuja tai vertailuja → EHDOTA taulukkoa (table) tai kortteja (cards) tämän sijaan ja kerro miksi\n- Jos teet bullet-listan, tee se ANALYYTTISESTI: johtopäätökset, suositukset, ei pelkkä datan toisto\n- Jokainen bullet = oma väite tai insight, ei pelkkä fakta`
-          :`Propose content for "${slide.label}".\n\nIMPORTANT:\n- If data has numbers or comparisons → SUGGEST table or cards instead and explain why\n- If bullet list, make it ANALYTICAL: conclusions, recommendations, not just data repetition\n- Each bullet = a claim or insight, not just a fact`,
+        table:fi?`Ehdota TAULUKKO dialle "${slide.label}".\nSarakkeet vertailua varten, konkreettisia lukuja, johtopäätös/suositus.\nÄlä tee bullet-listaa — tee OIKEA taulukko.`
+          :`Propose TABLE for "${slide.label}".\nColumns for comparison, concrete numbers, conclusion/recommendation.`,
+        gantt:fi?`Ehdota Gantt-kaavio dialle "${slide.label}".\nKAIKKI vaiheet (start/end viikkoina), kriittinen polku, riippuvuudet.`
+          :`Propose Gantt chart for "${slide.label}".\nALL phases (start/end in weeks), critical path, dependencies.`,
+        cards:fi?`Ehdota kortit dialle "${slide.label}".\nIkoni, otsikko, kuvaus, vakavuus. ANALYSOI ja priorisoi. Mitigaatio jokaiselle.`
+          :`Propose cards for "${slide.label}".\nIcon, title, description, severity. ANALYZE and prioritize. Mitigation for each.`,
+        "two-col":fi?`Ehdota kaksipalstainen dia "${slide.label}".\nVertailu: pros/cons, nykytila/tavoite, vaihtoehto A/B.`
+          :`Propose two-column slide "${slide.label}".\nComparison: pros/cons, current/target, option A/B.`,
+        bar_chart:fi?`Ehdota PYLVÄSKAAVIO dialle "${slide.label}".\n\nPYLVÄSKAAVION PITÄÄ sisältää:\n- Kategoriat (X-akseli): esim. toimittajat, kvartaalit, kustannuserät\n- 1-3 datasarjaa: esim. "Budjetti" ja "Toteutunut"\n- Luvut EUROINA tai prosentteina — EI tekstiä\n- Kerro mitä kaavio osoittaa: johtopäätös 1 lauseessa\n\nNäytä data selkeästi: "Kategoria: arvo1 / arvo2"`
+          :`Propose BAR CHART for "${slide.label}".\n\nMUST include:\n- Categories (X-axis): e.g. vendors, quarters, cost items\n- 1-3 data series: e.g. "Budget" and "Actual"\n- Numbers in EUR or percentages — NOT text\n- State what the chart shows: conclusion in 1 sentence`,
+        pie_chart:fi?`Ehdota PIIRAKKAKAAVIO dialle "${slide.label}".\n\n3-8 osaa, jokainen: nimi ja arvo (EUR tai %). Kerro mitä kaavio osoittaa.`
+          :`Propose PIE CHART for "${slide.label}".\n\n3-8 slices, each: label and value (EUR or %). State what the chart shows.`,
+        line_chart:fi?`Ehdota VIIVAKAAVIO dialle "${slide.label}".\n\nX-akseli: ajanjaksot. 1-3 trendiviivaa. Luvut numeerisina. Kerro trendi.`
+          :`Propose LINE CHART for "${slide.label}".\n\nX-axis: time periods. 1-3 trend lines. Numbers. State the trend.`,
+        bullets:fi?`Ehdota sisältö dialle "${slide.label}".\n\nJos datassa lukuja → EHDOTA taulukkoa, pylväskaaviota tai piirakkakaaviota. Bullet-lista vain kun ei lukuja.\nJokainen bullet = insight, ei pelkkä fakta. LASKE jos lukuja on.`
+          :`Propose content for "${slide.label}".\n\nIf data has numbers → SUGGEST table, bar chart or pie chart. Bullets only without numbers.\nEach bullet = insight, not just fact. CALCULATE if numbers exist.`,
       };
       const prompt=layoutPrompts[slide.layout]||layoutPrompts.bullets;
       const fullPrompt=`[DIA ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}\n\nTarjoa 2 vaihtoehtoa. Kerro kumpi on suosituksesi. Älä käytä JSON:ia.`;

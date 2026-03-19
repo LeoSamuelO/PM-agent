@@ -157,7 +157,10 @@ function getDefault(sd) {
   const m = { title:{title:sd.label||"Projekti",tagline:"",meta:""}, bullets:{heading:sd.label||"",bullets:["(Puuttuu)"]},
     table:{heading:sd.label||"",columns:["Tieto"],rows:[["(Puuttuu)"]]}, cards:{heading:sd.label||"",cards:[{icon:"📌",title:"(Puuttuu)",desc:"",level:"medium"}]},
     "two-col":{heading:sd.label||"",left:{title:"",items:["(Puuttuu)"]},right:{title:"",items:[]}},
-    gantt:{heading:sd.label||"Aikataulu",totalWeeks:8,phases:[{name:"(Puuttuu)",start:1,end:4,critical:false}]} };
+    gantt:{heading:sd.label||"Aikataulu",totalWeeks:8,phases:[{name:"(Puuttuu)",start:1,end:4,critical:false}]},
+    bar_chart:{heading:sd.label||"",categories:["A","B","C"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""},
+    pie_chart:{heading:sd.label||"",slices:[{label:"(Puuttuu)",value:100}],unit:"%",note:""},
+    line_chart:{heading:sd.label||"",categories:["1","2","3"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""} };
   return m[sd.layout] || m.bullets;
 }
 

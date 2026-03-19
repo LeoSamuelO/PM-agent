@@ -506,6 +506,185 @@ def build_gantt_slide(prs, d, def_label):
         lx += 2.0
 
 
+def build_bar_chart_slide(prs, d, def_label):
+    """Pylväskaavio — python-pptx natiivi chart-objekti."""
+    from pptx.util import Inches, Pt
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    slide = add_slide(prs, L["bullets"])
+    title_ph = get_ph(slide, 0)
+    if title_ph:
+        set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
+    hide_unused_ph(slide, {0})
+
+    categories = d.get("categories", ["A", "B", "C"])
+    series_list = d.get("series", [{"name": "Data", "values": [1, 2, 3]}])
+
+    chart_data = CategoryChartData()
+    chart_data.categories = categories
+    for s in series_list:
+        vals = s.get("values", [])
+        # Varmista numerot
+        clean_vals = []
+        for v in vals:
+            try: clean_vals.append(float(v))
+            except: clean_vals.append(0)
+        chart_data.add_series(s.get("name", ""), clean_vals)
+
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        Inches(0.5), Inches(2.1), Inches(12.0), Inches(4.8),
+        chart_data
+    ).chart
+
+    chart.has_legend = len(series_list) > 1
+    if chart.has_legend:
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+        chart.legend.font.size = Pt(9)
+        chart.legend.font.name = FONT
+
+    # Värit
+    gofore_colors = [C["digitalBlue"], C["orange"], C["mint"], C["grey"]]
+    for si, series in enumerate(chart.series):
+        fill = series.format.fill
+        fill.solid()
+        fill.fore_color.rgb = gofore_colors[si % len(gofore_colors)]
+
+    # Akselit
+    chart.category_axis.tick_labels.font.size = Pt(9)
+    chart.category_axis.tick_labels.font.name = FONT
+    chart.value_axis.tick_labels.font.size = Pt(8)
+    chart.value_axis.tick_labels.font.name = FONT
+
+    # Note
+    if d.get("note"):
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(12.0), Inches(0.3))
+        tf = tb.text_frame
+        r = tf.paragraphs[0].add_run()
+        r.text = d["note"]
+        r.font.name = FONT
+        r.font.size = Pt(8)
+        r.font.color.rgb = C["grey"]
+
+
+def build_pie_chart_slide(prs, d, def_label):
+    """Piirakkakaavio."""
+    from pptx.util import Inches, Pt
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    slide = add_slide(prs, L["bullets"])
+    title_ph = get_ph(slide, 0)
+    if title_ph:
+        set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
+    hide_unused_ph(slide, {0})
+
+    slices = d.get("slices", [{"label": "A", "value": 50}, {"label": "B", "value": 50}])
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [s.get("label", "") for s in slices]
+    vals = []
+    for s in slices:
+        try: vals.append(float(s.get("value", 0)))
+        except: vals.append(0)
+    chart_data.add_series("", vals)
+
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.PIE,
+        Inches(2.0), Inches(2.1), Inches(9.0), Inches(4.8),
+        chart_data
+    ).chart
+
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.RIGHT
+    chart.legend.include_in_layout = False
+    chart.legend.font.size = Pt(10)
+    chart.legend.font.name = FONT
+
+    # Värit
+    gofore_colors = [C["deepBlue"], C["digitalBlue"], C["orange"], C["mint"],
+                     C["grey"], RGBColor(0x5B, 0xA4, 0xCF), RGBColor(0xA0, 0x56, 0x8A)]
+    plot = chart.plots[0]
+    for i, point in enumerate(plot.series[0].points):
+        fill = point.format.fill
+        fill.solid()
+        fill.fore_color.rgb = gofore_colors[i % len(gofore_colors)]
+
+    # Datalabelit
+    plot.has_data_labels = True
+    plot.data_labels.font.size = Pt(9)
+    plot.data_labels.font.name = FONT
+    plot.data_labels.show_percentage = True
+    plot.data_labels.show_value = False
+
+    if d.get("note"):
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(12.0), Inches(0.3))
+        tf = tb.text_frame
+        r = tf.paragraphs[0].add_run()
+        r.text = d["note"]
+        r.font.name = FONT
+        r.font.size = Pt(8)
+        r.font.color.rgb = C["grey"]
+
+
+def build_line_chart_slide(prs, d, def_label):
+    """Viivakaavio."""
+    from pptx.util import Inches, Pt
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+
+    slide = add_slide(prs, L["bullets"])
+    title_ph = get_ph(slide, 0)
+    if title_ph:
+        set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
+    hide_unused_ph(slide, {0})
+
+    categories = d.get("categories", ["1", "2", "3"])
+    series_list = d.get("series", [{"name": "Data", "values": [1, 2, 3]}])
+
+    chart_data = CategoryChartData()
+    chart_data.categories = categories
+    for s in series_list:
+        vals = []
+        for v in s.get("values", []):
+            try: vals.append(float(v))
+            except: vals.append(0)
+        chart_data.add_series(s.get("name", ""), vals)
+
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.LINE_MARKERS,
+        Inches(0.5), Inches(2.1), Inches(12.0), Inches(4.8),
+        chart_data
+    ).chart
+
+    chart.has_legend = len(series_list) > 1
+    if chart.has_legend:
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.font.size = Pt(9)
+        chart.legend.font.name = FONT
+
+    gofore_colors = [C["digitalBlue"], C["orange"], C["mint"]]
+    for si, series in enumerate(chart.series):
+        series.format.line.color.rgb = gofore_colors[si % len(gofore_colors)]
+        series.format.line.width = Pt(2.5)
+
+    chart.category_axis.tick_labels.font.size = Pt(9)
+    chart.category_axis.tick_labels.font.name = FONT
+    chart.value_axis.tick_labels.font.size = Pt(8)
+    chart.value_axis.tick_labels.font.name = FONT
+
+    if d.get("note"):
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(12.0), Inches(0.3))
+        tf = tb.text_frame
+        r = tf.paragraphs[0].add_run()
+        r.text = d["note"]
+        r.font.name = FONT
+        r.font.size = Pt(8)
+        r.font.color.rgb = C["grey"]
+
+
 def build_end_slide(prs):
     """Layout 53: End slide simple"""
     add_slide(prs, L["end"])
@@ -542,6 +721,12 @@ def build_pptx(slide_data, slide_structure, output_path):
             build_table_slide(prs, d, label)
         elif layout == "gantt":
             build_gantt_slide(prs, d, label)
+        elif layout == "bar_chart":
+            build_bar_chart_slide(prs, d, label)
+        elif layout == "pie_chart":
+            build_pie_chart_slide(prs, d, label)
+        elif layout == "line_chart":
+            build_line_chart_slide(prs, d, label)
         else:
             build_bullets_slide(prs, d, label)
 
