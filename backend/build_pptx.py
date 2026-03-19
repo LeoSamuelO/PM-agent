@@ -87,12 +87,13 @@ def hide_unused_ph(slide, used_indices):
             sp.getparent().remove(sp)
 
 
-def build_title_slide(prs, d):
+def build_title_slide(prs, d, lang="fi"):
     """Layout 0: Cover slide circle only"""
     slide = add_slide(prs, L["cover"])
+    default_title = "Projektisuunnitelma" if lang == "fi" else "Project Plan"
     title_ph = get_ph(slide, 0)
     if title_ph:
-        set_text(title_ph.text_frame, d.get("title", "Projektisuunnitelma"),
+        set_text(title_ph.text_frame, d.get("title", default_title),
                  font_size=40, bold=True, color=C["white"])
 
     tagline_ph = get_ph(slide, 14)
@@ -105,7 +106,8 @@ def build_title_slide(prs, d):
         if d.get("meta"):
             meta_parts.append(d["meta"])
         if d.get("projectLead"):
-            meta_parts.append("Projektin johtaja: " + d["projectLead"])
+            prefix = "Projektin johtaja: " if lang == "fi" else "Project Lead: "
+            meta_parts.append(prefix + d["projectLead"])
         set_text(meta_ph.text_frame, "  |  ".join(meta_parts), font_size=12, color=C["white"])
 
     hide_unused_ph(slide, {0, 14, 15})
@@ -368,10 +370,18 @@ def build_table_slide(prs, d, def_label):
             run.font.color.rgb = C["deepBlue"]
 
 
-def build_gantt_slide(prs, d, def_label):
+def build_gantt_slide(prs, d, def_label, lang="fi"):
     """Layout 47: Headline + Timeline — auto months/weeks, capped to fit slide."""
     from pptx.util import Inches, Pt
     import math
+
+    # Lokalisoidut tekstit
+    txt = {
+        "fi": {"phase": "Vaihe", "week": "Vk", "month": "Kk", "normal": "Normaali vaihe", "critical": "Kriittinen polku", "frozen": "Muutosjäädytys"},
+        "en": {"phase": "Phase", "week": "Wk", "month": "Mo", "normal": "Normal phase", "critical": "Critical path", "frozen": "Change freeze"},
+    }.get(lang, {}).copy()
+    if not txt:
+        txt = {"phase": "Phase", "week": "Wk", "month": "Mo", "normal": "Normal phase", "critical": "Critical path", "frozen": "Change freeze"}
 
     slide = add_slide(prs, L["timeline"])
     title_ph = get_ph(slide, 0)
@@ -389,10 +399,10 @@ def build_gantt_slide(prs, d, def_label):
     use_months = total_weeks > 12
     if use_months:
         total_cols = math.ceil(total_weeks / 4.33)  # viikot → kuukaudet
-        col_labels = [f"Kk{i+1}" for i in range(total_cols)]
+        col_labels = [f"{txt['month']}{i+1}" for i in range(total_cols)]
     else:
         total_cols = total_weeks
-        col_labels = [f"Vk{i+1}" for i in range(total_cols)]
+        col_labels = [f"{txt['week']}{i+1}" for i in range(total_cols)]
 
     # ═══ RAJOITUKSET ═══
     max_phases = 15  # Ei koskaan enempää kuin mahtuu dialle
@@ -432,7 +442,7 @@ def build_gantt_slide(prs, d, def_label):
         return shape
 
     # Header
-    add_rect(slide, tl, tt, pcw, hh, C["deepBlue"], "Vaihe", font_size=9, bold=True)
+    add_rect(slide, tl, tt, pcw, hh, C["deepBlue"], txt["phase"], font_size=9, bold=True)
     col_font = 8 if total_cols <= 12 else 7 if total_cols <= 18 else 6
     for ci, lbl in enumerate(col_labels):
         x = tl + pcw + ci * wcw
@@ -484,11 +494,11 @@ def build_gantt_slide(prs, d, def_label):
 
     # ═══ SELITE — varmista että mahtuu dialle ═══
     legend_y = min(tt + hh + n_phases * rh + 0.15, max_bottom)
-    legend_items = [("Normaali vaihe", C["digitalBlue"])]
+    legend_items = [(txt["normal"], C["digitalBlue"])]
     if has_critical:
-        legend_items.append(("Kriittinen polku", C["orange"]))
+        legend_items.append((txt["critical"], C["orange"]))
     if frozen_week:
-        legend_items.append(("Muutosjäädytys", C["red"]))
+        legend_items.append((txt["frozen"], C["red"]))
 
     lx = tl
     for label, color in legend_items:
@@ -698,7 +708,7 @@ def build_end_slide(prs):
     add_slide(prs, L["end"])
 
 
-def build_pptx(slide_data, slide_structure, output_path):
+def build_pptx(slide_data, slide_structure, output_path, lang="fi"):
     prs = Presentation(TEMPLATE_PATH)
 
     # Poista kaikki olemassa olevat diat templatesta
@@ -720,7 +730,7 @@ def build_pptx(slide_data, slide_structure, output_path):
         d = slide_data.get(sid, {})
 
         if layout == "title":
-            build_title_slide(prs, d)
+            build_title_slide(prs, d, lang)
         elif layout == "two-col":
             build_two_col_slide(prs, d, label)
         elif layout == "cards":
@@ -728,7 +738,7 @@ def build_pptx(slide_data, slide_structure, output_path):
         elif layout == "table":
             build_table_slide(prs, d, label)
         elif layout == "gantt":
-            build_gantt_slide(prs, d, label)
+            build_gantt_slide(prs, d, label, lang)
         elif layout == "bar_chart":
             build_bar_chart_slide(prs, d, label)
         elif layout == "pie_chart":
@@ -771,7 +781,8 @@ if __name__ == "__main__":
         build_pptx(
             payload.get("slideData", {}),
             payload.get("slideStructure", []),
-            output
+            output,
+            payload.get("lang", "fi")
         )
     except Exception as e:
         import traceback

@@ -243,16 +243,35 @@ export default function App() {
 
   // ═══ VAIHE 2 ═══
   async function runFocusAsk(){
-    setScreenSync("focus");addDivider("🎯 Vaihe 2 — "+T[langRef.current].phases.focus.split("—")[1]);
-    const r=await api([{role:"user",content:"Kerro 1 lauseella projektista ja kysy fokus:\n1. 📋 Yleinen projektisuunnitelma\n2. ⚠️ Riskianalyysi\n3. 📅 Aikataulukatsaus\n4. 🚀 Kickoff\n5. 👥 Sidosryhmäraportti\n6. 🔍 Muu"}],"VAIHE: Fokus.\n"+buildContext());
+    setScreenSync("focus");addDivider("🎯 "+T[langRef.current].phases.focus);
+    const fi=langRef.current==="fi";
+    const focusPrompt=fi
+      ?"Kerro 1 lauseella projektista ja kysy fokus:\n1. 📋 Yleinen projektisuunnitelma\n2. ⚠️ Riskianalyysi\n3. 📅 Aikataulukatsaus\n4. 🚀 Kickoff\n5. 👥 Sidosryhmäraportti\n6. 🔍 Muu"
+      :"Describe the project in 1 sentence and ask which type of presentation to create:\n1. 📋 General project plan\n2. ⚠️ Risk analysis\n3. 📅 Timeline overview\n4. 🚀 Kickoff\n5. 👥 Stakeholder report\n6. 🔍 Other";
+    const r=await api([{role:"user",content:focusPrompt}],(fi?"VAIHE: Fokus.":"PHASE: Focus.")+"\n"+buildContext());
     addMsg("assistant",strip(r));
   }
 
   async function runFocusConfirm(userText){
+    const fi=langRef.current==="fi";
+    const lower=userText.trim().toLowerCase();
+    // Tarkista onko tämä oikeasti fokusvalinta vai jotain muuta
+    const isFocusChoice=/^[1-6]\.?$/.test(lower) || 
+      ["projektisuunnitelma","riskianalyysi","aikataulu","kickoff","sidosryhmä","muu",
+       "project plan","risk analysis","timeline","stakeholder","other"].some(w=>lower.includes(w));
+    
+    if(!isFocusChoice){
+      // Ei ole fokusvalinta — voi olla kielitoive, kysymys tms. Lähetä takaisin AI:lle
+      const r=await api([...recentMessages(2),{role:"user",content:userText}],
+        (fi?"VAIHE: Fokus. Käyttäjä ei valinnut fokusta. Vastaa hänen viestiinsä ja kysy fokus uudelleen."
+          :"PHASE: Focus. User did not choose a focus. Respond to their message and ask for focus again.")+"\n"+buildContext());
+      addMsg("assistant",strip(r));
+      return;  // Jää focus-vaiheeseen
+    }
+
     setFocusType(userText.trim());focusTypeRef.current=userText.trim();
     updateSummary("FOKUS: "+userText.trim());
-    setScreenSync("insights");addDivider("🔍 Vaihe 3");
-    const fi=langRef.current==="fi";
+    setScreenSync("insights");addDivider("🔍 "+(fi?"Vaihe 3":"Phase 3"));
     const insightPrompt=fi
       ?`Fokus: "${userText.trim()}"\n\nAnalysoi materiaali ja listaa 4-6 HAVAINTOA:\n- Jokaisessa havainnossa: FAKTA + JOHTOPÄÄTÖS + SUOSITUS/KYSYMYS\n- Jos materiaalissa on valintoja tai vaihtoehtoja → ota kantaa, kerro suosituksesi\n- Jos löydät ristiriitoja tai puutteita → nosta ne esiin\n- Jos datassa on lukuja → laske: ROI, takaisinmaksu, vertailut\n- ÄLÄ vain toista mitä materiaalissa lukee — ANALYSOI\n\nÄLÄ ehdota diarakennetta. Kysy: "Hyväksytkö nämä havainnot?"`
       :`Focus: "${userText.trim()}"\n\nAnalyze material and list 4-6 INSIGHTS:\n- Each: FACT + CONCLUSION + RECOMMENDATION/QUESTION\n- If choices/alternatives → take a position, give recommendation\n- If contradictions or gaps → raise them\n- If numbers → calculate: ROI, payback, comparisons\n- Don't just restate the material — ANALYZE\n\nDon't suggest slide structure. Ask: "Do you approve these insights?"`;
@@ -582,7 +601,7 @@ export default function App() {
   async function doDownload(){
     setScreenSync("ready");addDivider("✅ PowerPoint");addMsg("assistant",T[langRef.current].generating);setBuilding(true);
     try{
-      const r=await fetch(API+"/api/build-pptx",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({slideData:collectedRef.current,slideStructure:slidesRef.current})});
+      const r=await fetch(API+"/api/build-pptx",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({slideData:collectedRef.current,slideStructure:slidesRef.current,lang:langRef.current})});
       if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||"HTTP "+r.status);
       const blob=await r.blob();const url=URL.createObjectURL(blob);
       Object.assign(document.createElement("a"),{href:url,download:"projektisuunnitelma.pptx"}).click();URL.revokeObjectURL(url);

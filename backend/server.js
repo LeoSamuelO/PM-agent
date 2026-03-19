@@ -64,7 +64,7 @@ app.post("/api/chat", async (req, res) => {
 
 // ── PPTX — Python stdin approach ──────────────────────────────────
 app.post("/api/build-pptx", async (req, res) => {
-  const { slideData, slideStructure } = req.body;
+  const { slideData, slideStructure, lang } = req.body;
   if (!slideData || !slideStructure?.length) return res.status(400).json({ error: "Data puuttuu" });
 
   for (const sd of slideStructure) {
@@ -74,7 +74,7 @@ app.post("/api/build-pptx", async (req, res) => {
   // Luo tiedostonimi projektin nimestä
   const titleSlide = slideStructure.find(s => s.layout === "title");
   const titleData = titleSlide ? slideData[titleSlide.id] : {};
-  const projectName = (titleData.title || "projektisuunnitelma")
+  const projectName = (titleData.title || "presentation")
     .replace(/[^a-zäöåA-ZÄÖÅ0-9\s-]/g, "").trim().replace(/\s+/g, "_").substring(0, 50);
   const fileName = projectName + ".pptx";
 
@@ -87,11 +87,10 @@ app.post("/api/build-pptx", async (req, res) => {
 
   if (fs.existsSync(script) && fs.existsSync(tmpl)) {
     try {
-      // Etsi python
       const pythonCmd = await findPython();
       if (pythonCmd) {
         console.log("🐍 Python:", pythonCmd);
-        await runPython(pythonCmd, script, JSON.stringify({ slideData, slideStructure }), outPath);
+        await runPython(pythonCmd, script, JSON.stringify({ slideData, slideStructure, lang: lang || "fi" }), outPath);
 
         if (fs.existsSync(outPath)) {
           console.log("✅ Gofore-template PPTX OK");
@@ -154,12 +153,12 @@ function runPython(cmd, script, jsonStr, outPath) {
 }
 
 function getDefault(sd) {
-  const m = { title:{title:sd.label||"Projekti",tagline:"",meta:""}, bullets:{heading:sd.label||"",bullets:["(Puuttuu)"]},
-    table:{heading:sd.label||"",columns:["Tieto"],rows:[["(Puuttuu)"]]}, cards:{heading:sd.label||"",cards:[{icon:"📌",title:"(Puuttuu)",desc:"",level:"medium"}]},
-    "two-col":{heading:sd.label||"",left:{title:"",items:["(Puuttuu)"]},right:{title:"",items:[]}},
-    gantt:{heading:sd.label||"Aikataulu",totalWeeks:8,phases:[{name:"(Puuttuu)",start:1,end:4,critical:false}]},
+  const m = { title:{title:sd.label||"",tagline:"",meta:""}, bullets:{heading:sd.label||"",bullets:["—"]},
+    table:{heading:sd.label||"",columns:["—"],rows:[["—"]]}, cards:{heading:sd.label||"",cards:[{icon:"📌",title:"—",desc:"",level:"medium"}]},
+    "two-col":{heading:sd.label||"",left:{title:"",items:["—"]},right:{title:"",items:[]}},
+    gantt:{heading:sd.label||"",totalWeeks:8,phases:[{name:"—",start:1,end:4,critical:false}]},
     bar_chart:{heading:sd.label||"",categories:["A","B","C"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""},
-    pie_chart:{heading:sd.label||"",slices:[{label:"(Puuttuu)",value:100}],unit:"%",note:""},
+    pie_chart:{heading:sd.label||"",slices:[{label:"—",value:100}],unit:"%",note:""},
     line_chart:{heading:sd.label||"",categories:["1","2","3"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""} };
   return m[sd.layout] || m.bullets;
 }
@@ -175,7 +174,7 @@ async function buildFallbackPPTX(data, structure) {
     const d = data[sd.id] || {};
     if (sd.layout==="title") {
       const s=pres.addSlide(); s.background={color:C.deepBlue};
-      s.addText(d.title||"Projekti",{x:0.9,y:1.4,w:8.5,h:2.2,fontSize:36,fontFace:F,bold:true,color:C.white,margin:0});
+      s.addText(d.title||"",{x:0.9,y:1.4,w:8.5,h:2.2,fontSize:36,fontFace:F,bold:true,color:C.white,margin:0});
       s.addText(d.tagline||"",{x:0.9,y:3.75,w:9,h:0.5,fontSize:15,fontFace:F,color:C.orange,margin:0});
       s.addText(d.meta||"",{x:0.9,y:4.35,w:9.5,h:0.32,fontSize:12,fontFace:F,color:C.silver,margin:0});
       if(d.projectLead) s.addText("PM: "+d.projectLead,{x:0.9,y:4.72,w:9.5,h:0.32,fontSize:12,fontFace:F,color:C.silver,margin:0});
