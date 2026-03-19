@@ -387,7 +387,10 @@ export default function App() {
           :`Propose content for "${slide.label}".\n\nIf data has numbers → SUGGEST table, bar chart or pie chart. Bullets only without numbers.\nEach bullet = insight, not just fact. CALCULATE if numbers exist.`,
       };
       const prompt=layoutPrompts[slide.layout]||layoutPrompts.bullets;
-      const fullPrompt=`[DIA ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}\n\nTarjoa 2 vaihtoehtoa. Kerro kumpi on suosituksesi. Älä käytä JSON:ia.`;
+      const layoutNote=langRef.current==="fi"
+        ?`\n\nJos taulukko (| sarake1 | sarake2 |) olisi selkeämpi kuin nykyinen layout (${slide.layout}), käytä markdown-taulukkoa — järjestelmä tunnistaa sen automaattisesti. Tarjoa 2 vaihtoehtoa. Kerro kumpi on suosituksesi.`
+        :`\n\nIf a table (| col1 | col2 |) would be clearer than current layout (${slide.layout}), use markdown table — the system detects it automatically. Offer 2 options, state your recommendation.`;
+      const fullPrompt=`[DIA ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}${layoutNote}`;
       const r=await api([{role:"user",content:fullPrompt}],"VAIHE: Diojen sisältö.\n"+buildContext());
       const cleanText=strip(r);lastProposalRef.current[slide.id]=cleanText;
       addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
@@ -405,7 +408,25 @@ export default function App() {
     if(isShortYes(userText)||isCancel){
       addMsg("assistant",T[langRef.current].saving);
       const proposalText=lastProposalRef.current[slide.id]||"";
-      const slideData=await convertToJSON(slide.label,slide.layout,proposalText,langRef.current);
+
+      // ═══ AUTO-LAYOUT: tunnista sisällöstä parempi layout ═══
+      let effectiveLayout=slide.layout;
+      // Jos AI ehdotti markdown-taulukkoa mutta layout ei ole table → vaihda
+      const hasMarkdownTable=(proposalText.match(/\|.*\|.*\|/g)||[]).length>=3;
+      if(hasMarkdownTable&&!["table","gantt"].includes(effectiveLayout)){
+        effectiveLayout="table";
+        // Päivitä myös rakenne
+        const si=cur.findIndex(s=>s.id===slide.id);
+        if(si>=0){cur[si]={...cur[si],layout:"table",icon:"📊"};setSlides([...cur]);slidesRef.current=cur;}
+      }
+      // Jos sisältö viittaa pylväskaavioon/piirakkaan mutta layout on bullets
+      if(effectiveLayout==="bullets"){
+        const chartHints=proposalText.match(/pylväs|bar.chart|kaavio.*luku|chart.*number/gi);
+        const pieHints=proposalText.match(/piirakka|pie.chart|jakauma|osuus.*%/gi);
+        // Ei automaattisesti vaihda — AI:n pitää ehdottaa se rakenteessa
+      }
+
+      const slideData=await convertToJSON(slide.label,effectiveLayout,proposalText,langRef.current);
       if(slideData){collectedRef.current={...collectedRef.current,[slide.id]:slideData};}
       setStatuses(prev=>({...prev,[slide.id]:"done"}));
       // Tarkista sisältääkö dia päätöksiä — tallenna ne
