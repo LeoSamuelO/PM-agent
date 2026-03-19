@@ -202,9 +202,9 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
   const schemas = {
     title:'{"title":"...","tagline":"...","meta":"...","projectLead":"..."}',
     bullets:'{"heading":"...","bullets":["kohta 1","kohta 2"],"note":""}',
-    table:'{"heading":"...","columns":["S1","S2","S3"],"rows":[["a","b","c"]]}',
-    gantt:'{"heading":"...","totalWeeks":26,"frozenWeek":null,"phases":[{"name":"Suunnittelu","start":1,"end":4,"critical":true},{"name":"Kehitys","start":5,"end":16,"critical":true},{"name":"Testaus","start":14,"end":20,"critical":false}]}  HUOM: start/end = SUHTEELLINEN viikkonumero (1=projektin 1. viikko). EI ISO-viikkoja!',
-    cards:'{"heading":"...","cards":[{"icon":"⚠️","title":"...","desc":"...","level":"high"}]}',
+    table:'{"heading":"...","columns":["S1","S2","S3"],"rows":[["a","b","c"]],"cellColors":[["neutral","positive","negative"]]}  cellColors on VALINNAINEN: sama rakenne kuin rows, arvot: "positive" (vihreä), "negative" (punainen), "warning" (keltainen), "neutral" (ei väriä). Käytä kun soluissa on arvioita/vertailuja.',
+    gantt:'{"heading":"...","totalWeeks":26,"phases":[{"name":"Suunnittelu","start":1,"end":4,"critical":true},{"name":"Kehitys","start":5,"end":16,"critical":true},{"name":"Testaus","start":14,"end":20,"critical":false}]}  KRIITTISTÄ: start/end OVAT KOKONAISLUKUJA (1=projektin 1. viikko). EI "2026-W14"! critical=true/false.',
+    cards:'{"heading":"...","cards":[{"icon":"⚠️","title":"...","desc":"...","level":"high"}]}  level AINA englanniksi: "high" (punainen), "medium" (keltainen), "low" (vihreä).',
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
     bar_chart:'{"heading":"...","categories":["Q1","Q2","Q3"],"series":[{"name":"Budjetti","values":[100,200,150]},{"name":"Toteutunut","values":[90,210,140]}],"unit":"EUR","note":""}',
     pie_chart:'{"heading":"...","slices":[{"label":"Osa A","value":40},{"label":"Osa B","value":35},{"label":"Osa C","value":25}],"unit":"%","note":""}',
@@ -243,8 +243,14 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
           const maxEnd=Math.max(...parsed.phases.map(p=>p.end));
           parsed.totalWeeks=Math.max(parsed.totalWeeks||0,maxEnd);
         }
-        // Varmista numerot
-        parsed.phases=parsed.phases.map(p=>({...p,start:parseInt(p.start)||1,end:parseInt(p.end)||parseInt(p.start)||1,critical:!!p.critical}));
+        // Varmista numerot ja normalisoi kenttänimet
+        parsed.phases=parsed.phases.map(p=>({
+          name:p.name||p.title||"",
+          start:parseInt(p.start)||1,
+          end:parseInt(p.end)||parseInt(p.start)||1,
+          // Tuki: critical=true TAI status="critical"
+          critical:!!p.critical||p.status==="critical"||p.status==="kriittinen",
+        }));
       }
       return parsed;
     }
@@ -448,8 +454,8 @@ export default function App() {
     setScreenSync("structure");addDivider("📐 Vaihe 4 — Diarakenne");
     const fi=langRef.current==="fi";
     const structPrompt=fi
-      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (5-7 diaa)**\n**B: Kattava (8-12 diaa)**\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-VALINTA (VAIHTELE — ÄLÄ toista samaa!):\n- Avainluvut/KPI (ROI, säästö, takaisinmaksu) → kpi (SUOSI tätä avainluvuille!)\n- Vertailutaulukko (MAX 7 riviä!) → table\n- Budjetit, kustannukset numeerisesti → bar_chart (SUOSI tätä lukuvertailuihin!)\n- Jakaumat, osuudet → pie_chart\n- Trendit, ennusteet → line_chart\n- Riskit, haasteet → cards\n- Aikataulu → gantt\n- Nykytila/tavoite, pros/cons → two-col\n- Teksti ilman lukuja → bullets\n\nTÄRKEÄÄ:\n- ÄLÄ käytä samaa layoutia 3+ kertaa! Vaihtele!\n- Isot taulukot (8+ riviä) → jaa kahdeksi diaksi tai käytä bar_chart\n- Avainluvut (ROI, budjetti, aikataulu) → kpi-layout isoine lukuineen, EI taulukko\n\nKysy: "Kumpi sopii?"`
-      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (5-7 slides)**\n**B: Comprehensive (8-12 slides)**\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT SELECTION (VARY — NEVER repeat same layout 3+ times!):\n- Key metrics/KPIs (ROI, savings, payback) → kpi (PREFER for key numbers!)\n- Comparison table (MAX 7 rows!) → table\n- Budgets, costs numerically → bar_chart (PREFER for number comparisons!)\n- Distributions, shares → pie_chart\n- Trends, forecasts → line_chart\n- Risks, challenges → cards\n- Timeline → gantt\n- Current/target, pros/cons → two-col\n- Text without numbers → bullets\n\nIMPORTANT:\n- NEVER use same layout 3+ times! Vary!\n- Large tables (8+ rows) → split into two slides or use bar_chart\n- Key numbers (ROI, budget, timeline) → kpi layout with big numbers, NOT table\n\nAsk: "Which one?"`;
+      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-20 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin mukaan! Jos materiaali on laaja (riskejä, budjetteja, aikatauluja), B-vaihtoehto voi olla 15-20 diaa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nISO AIHE = USEAMPI DIA:\n- Riskienhallinta: yleiskuva (cards) + yksityiskohdat (table) + mitigaatiot (bullets)\n- Budjetti: avainluvut (kpi) + vertailu (bar_chart) + erittely (table)\n- Aikataulu: yleiskuva (gantt) + riippuvuudet (table) + milestone-tavoitteet (kpi)\n- Toimittajavertailu: yhteenveto (kpi) + yksityiskohdat (table) + suositus (two-col)\n\nLAYOUT-VALINTA (VAIHTELE!):\n- kpi: avainluvut, ROI, säästöt\n- table: vertailut (MAX 7 riviä! isompi → jaa kahdelle dialle)\n- bar_chart: budjettit, kustannukset\n- pie_chart: jakaumat\n- line_chart: trendit\n- cards: riskit (2-4 korttia)\n- gantt: aikataulu\n- two-col: nykytila/tavoite, pros/cons\n- bullets: teksti ilman lukuja\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
+      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-20 slides)** — detailed plan\n\nScale to material! If material is rich (risks, budgets, timelines), option B can be 15-20 slides.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nBIG TOPIC = MULTIPLE SLIDES:\n- Risk management: overview (cards) + details (table) + mitigations (bullets)\n- Budget: key numbers (kpi) + comparison (bar_chart) + breakdown (table)\n- Timeline: overview (gantt) + dependencies (table) + milestones (kpi)\n- Vendor comparison: summary (kpi) + details (table) + recommendation (two-col)\n\nLAYOUT SELECTION (VARY!):\n- kpi: key metrics, ROI, savings\n- table: comparisons (MAX 7 rows! larger → split across slides)\n- bar_chart: budgets, costs\n- pie_chart: distributions\n- line_chart: trends\n- cards: risks (2-4 cards)\n- gantt: timeline\n- two-col: current/target, pros/cons\n- bullets: text without numbers\n\nAsk: "Which one, or do you want a specific number of slides?"`;
     const r=await api([{role:"user",content:structPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
     const s=tryParseStructure(strip(r)); if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
@@ -496,8 +502,8 @@ export default function App() {
     // Mikä tahansa muu — vaihtoehdon valinta, vapaa muutos, "kattavampi", "B", jne.
     // → Pyydä AI näyttämään LOPULLINEN rakenne puhtaana listana
     const modifyPrompt=fi
-      ?`Käyttäjän valinta/muutos: "${userText}"\n\nNäytä LOPULLINEN diarakenne yhtenä numeroiduna listana. VAIN YKSI lista. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout\n\nLayoutit: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart\nKäytä monipuolisesti: TABLE vertailuille, BAR_CHART budjeteille, PIE_CHART jakaumille, LINE_CHART trendeille, CARDS riskeille, GANTT aikatauluille. Raskaat aiheet voi jakaa 2-3 diaan.`
-      :`User choice/modification: "${userText}"\n\nShow FINAL slide structure as ONE numbered list. Cover always 1. Each row: number + emoji + name - layout\n\nLayouts: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart\nUse variety: TABLE for comparisons, BAR_CHART for budgets, PIE_CHART for distributions, LINE_CHART for trends. Heavy topics can span 2-3 slides.`;
+      ?`Käyttäjän valinta/muutos: "${userText}"\n\nNäytä LOPULLINEN diarakenne yhtenä numeroiduna listana. VAIN YKSI lista. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout\n\nLayoutit: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart, kpi\nKäytä monipuolisesti: KPI avainluvuille, BAR_CHART budjeteille, PIE_CHART jakaumille, CARDS riskeille, GANTT aikatauluille. Iso aihe → jaa 2-3 diaan. Käyttäjä voi pyytää tiettyä diamäärää.`
+      :`User choice/modification: "${userText}"\n\nShow FINAL slide structure as ONE numbered list. Cover always 1. Each row: number + emoji + name - layout\n\nLayouts: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart, kpi\nUse variety: KPI for key numbers, BAR_CHART for budgets, PIE_CHART for distributions, CARDS for risks, GANTT for timelines. Big topics → split into 2-3 slides. User can request specific slide count.`;
     const r=await api([...recentMessages(3),{role:"user",content:modifyPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
     const parsed=tryParseStructure(strip(r));
     if(parsed&&parsed.length>0){

@@ -392,15 +392,24 @@ def build_table_slide(prs, d, def_label):
         run.font.bold = True
         run.font.color.rgb = C["white"]
 
-    # Data rivit — värikoodaus
+    # Data rivit — värikoodaus (AI:n cellColors tai fallback-tunnistus)
+    cell_colors = d.get("cellColors", [])
     for ri, row in enumerate(rows):
         base_bg = C["light"] if ri % 2 == 0 else C["white"]
+        # Hae AI:n värikoodaus tälle riville (jos on)
+        row_colors = cell_colors[ri] if ri < len(cell_colors) else []
         for ci, val in enumerate(row[:n_cols]):
             cell = table.cell(ri + 1, ci)
             text = str(val or "")
 
-            # Värikoodaus: ensimmäinen sarake on aina label → ei värikoodata
-            sent = _detect_cell_sentiment(text) if ci > 0 else "neutral"
+            # 1) Käytä AI:n värikoodausta jos saatavilla
+            # 2) Fallback: kovakoodattu tunnistus (vain data-sarakkeet, ci>0)
+            if ci < len(row_colors) and row_colors[ci] in SENT_COLORS:
+                sent = row_colors[ci]
+            elif ci > 0:
+                sent = _detect_cell_sentiment(text)
+            else:
+                sent = "neutral"
             sc = SENT_COLORS.get(sent, SENT_COLORS["neutral"])
 
             cell.fill.solid()
