@@ -366,6 +366,75 @@ export default function App() {
   const addDivider=useCallback((text)=>setMsgs(p=>[...p,{type:"divider",content:text}]),[]);
   const api=useCallback((msgs,extra,search)=>callAPI(msgs,extra,search,langRef.current),[]);
 
+  // ═══ SESSION RECOVERY: Tallenna tila localStorageen ═══
+  function saveSession(){
+    try{
+      const state={
+        screen:screenRef.current,
+        slides:slidesRef.current,
+        slideIdx:slideIdxRef.current,
+        collected:collectedRef.current,
+        statuses:Object.fromEntries(slidesRef.current.map(s=>[s.id,statuses[s.id]||"pending"])),
+        summary:summaryRef.current,
+        decisions:decisionsRef.current,
+        docContext:docContextRef.current?.substring(0,3000),
+        focus:focusTypeRef.current,
+        proposals:lastProposalRef.current,
+        ts:Date.now(),
+      };
+      localStorage.setItem("pm_session",JSON.stringify(state));
+    }catch(e){console.warn("Session save failed:",e);}
+  }
+  function loadSession(){
+    try{
+      const raw=localStorage.getItem("pm_session");
+      if(!raw)return null;
+      const s=JSON.parse(raw);
+      // Hylkää yli 24h vanhat sessiot
+      if(Date.now()-s.ts>24*3600000){localStorage.removeItem("pm_session");return null;}
+      return s;
+    }catch{return null;}
+  }
+  function clearSession(){localStorage.removeItem("pm_session");}
+
+  // Tarkista onko keskeneräinen sessio palautettavissa
+  const [showRecover,setShowRecover]=useState(false);
+  const savedSessionRef=useRef(null);
+  useEffect(()=>{
+    if(authed&&screen==="intro"){
+      const saved=loadSession();
+      if(saved&&saved.slides?.length>0&&["planning","review","structure","insights"].includes(saved.screen)){
+        savedSessionRef.current=saved;
+        setShowRecover(true);
+      }
+    }
+  },[authed,screen]);
+  function recoverSession(){
+    const s=savedSessionRef.current;
+    if(!s)return;
+    slidesRef.current=s.slides;setSlides(s.slides);
+    collectedRef.current=s.collected||{};
+    summaryRef.current=s.summary||"";
+    decisionsRef.current=s.decisions||[];
+    docContextRef.current=s.docContext||"";
+    focusTypeRef.current=s.focus||"";setFocusType(s.focus||"");
+    lastProposalRef.current=s.proposals||{};
+    setStatuses(s.statuses||{});
+    setSlideIdxSync(s.slideIdx||0);
+    // Palauta review-tilaan (turvallisin palautuspiste)
+    setShowRecover(false);
+    const fi=langRef.current==="fi";
+    const list=s.slides.map((sl,i)=>`${i+1}. ${sl.icon||"📄"} ${sl.label}`).join("\n");
+    const doneCount=Object.values(s.statuses||{}).filter(v=>v==="done").length;
+    setMsgs([
+      {type:"divider",content:fi?"🔄 Sessio palautettu":"🔄 Session recovered"},
+      {role:"assistant",content:(fi?`Palautin edellisen session (${doneCount}/${s.slides.length} diaa valmiina):\n\n${list}\n\n`:`Recovered previous session (${doneCount}/${s.slides.length} slides done):\n\n${list}\n\n`)
+        +(doneCount<s.slides.length?(fi?"Jatketaan siitä mihin jäätiin. Kirjoita 'valmis' ladataksesi tai muokkaa dioja.":"Let's continue where we left off. Type 'done' to download or edit slides.")
+        :(fi?"Kaikki diat valmiina! Kirjoita 'valmis' ladataksesi.":"All slides done! Type 'done' to download."))},
+    ]);
+    setScreenSync("review");
+  }
+
   function buildContext(){
     let c="";
     if(summaryRef.current)c+=summaryRef.current+"\n\n";
@@ -549,6 +618,7 @@ export default function App() {
     setStatuses(Object.fromEntries(confirmed.map(s=>[s.id,"pending"])));
     setScreenSync("planning");setSlideIdxSync(0);
     addDivider("📄 Vaihe 5 — Diojen sisällöntuotanto");
+    setTimeout(saveSession,50); // Tallenna rakenne heti
     setTimeout(()=>proposeSlide(0,confirmed),100);
   }
 
@@ -634,8 +704,30 @@ export default function App() {
         lastProposalRef.current[slide.id]=verifiedText;
       }
       const slideData=await convertToJSON(slide.label,effectiveLayout,verifiedText,langRef.current);
-      if(slideData){collectedRef.current={...collectedRef.current,[slide.id]:slideData};}
-      setStatuses(prev=>({...prev,[slide.id]:"done"}));
+      // Validoi: onko diassa oikeaa sisältöä?
+      const fi=langRef.current==="fi";
+      if(!slideData){
+        addMsg("assistant",fi?"⚠️ Dian sisältöä ei voitu muuntaa. Yritä muokata tai hyväksy uudelleen."
+          :"⚠️ Could not convert slide content. Try editing or approving again.");
+        return;
+      }
+      const isEmpty=(d,layout)=>{
+        if(layout==="bullets")return!d.bullets||d.bullets.length===0||d.bullets.every(b=>!b||b==="—"||b.trim()==="");
+        if(layout==="table")return!d.rows||d.rows.length===0;
+        if(layout==="gantt")return!d.phases||d.phases.length===0;
+        if(layout==="cards")return!d.cards||d.cards.length===0;
+        if(layout==="kpi")return!d.kpis||d.kpis.length===0;
+        if(layout==="two-col")return(!d.left?.items?.length)&&(!d.right?.items?.length);
+        if(layout==="bar_chart"||layout==="pie_chart"||layout==="line_chart")return!d.categories?.length&&!d.slices?.length;
+        return false;
+      };
+      if(isEmpty(slideData,effectiveLayout)){
+        addMsg("assistant",fi?"⚠️ Dia vaikuttaa tyhjältä. Voisitko kuvailla mitä sisältöä haluat?"
+          :"⚠️ Slide appears empty. Could you describe what content you want?");
+        return;
+      }
+      collectedRef.current={...collectedRef.current,[slide.id]:slideData};
+      setStatuses(prev=>{const n={...prev,[slide.id]:"done"};setTimeout(saveSession,100);return n;});
       // Tarkista sisältääkö dia päätöksiä — tallenna ne
       const decisionKeywords=/suosit|valitaan|päätös|valinta|ehdot|recomm|select|decision|chosen|budjetti.*hyväk/i;
       if(decisionKeywords.test(proposalText)){
@@ -793,7 +885,23 @@ export default function App() {
       const blob=await r.blob();const url=URL.createObjectURL(blob);
       Object.assign(document.createElement("a"),{href:url,download:"projektisuunnitelma.pptx"}).click();URL.revokeObjectURL(url);
       addMsg("assistant",T[langRef.current].downloaded);
-    }catch(e){addMsg("assistant","⚠️ "+e.message);}
+      clearSession(); // Esitys ladattu — tyhjennä tallennettu sessio
+    }catch(e){
+      const fi=langRef.current==="fi";
+      const msg=e.message||"";
+      if(msg.includes("401")||msg.includes("vanhentunut")){
+        const ok=await tryAutoRelogin();
+        addMsg("assistant",ok?(fi?"🔄 Sessio uusittu — yritä ladata uudelleen.":"🔄 Session refreshed — try downloading again.")
+          :(fi?"⚠️ Istunto vanhentunut. Kirjaudu uudelleen.":"⚠️ Session expired. Please log in again."));
+      }else if(msg.includes("500")||msg.includes("exit")){
+        addMsg("assistant",fi?"⚠️ PowerPointin generointi epäonnistui. Kokeile uudelleen — jos ongelma toistuu, yritä vähemmillä dioilla."
+          :"⚠️ PowerPoint generation failed. Try again — if the issue persists, try with fewer slides.");
+      }else if(msg.includes("Failed to fetch")||msg.includes("NetworkError")){
+        addMsg("assistant",fi?"⚠️ Yhteys palvelimeen katkesi. Tarkista nettiyhteys ja yritä uudelleen.":"⚠️ Connection to server lost. Check your internet and try again.");
+      }else{
+        addMsg("assistant","⚠️ "+(fi?"Virhe generoinnissa: ":"Error generating: ")+msg);
+      }
+    }
     setBuilding(false);
   }
 
@@ -859,7 +967,10 @@ export default function App() {
     <div style={{background:"rgba(255,255,255,0.05)",borderRadius:14,padding:20,marginBottom:32,textAlign:"left"}}>
       {t.steps.map(([i,title,desc])=><div key={title} style={{display:"flex",gap:12,marginBottom:14}}><span style={{fontSize:18}}>{i}</span><div><div style={{color:G.white,fontWeight:600,fontSize:13}}>{title}</div><div style={{color:G.grey,fontSize:12}}>{desc}</div></div></div>)}
     </div>
-    <button onClick={startInterview} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:700,cursor:"pointer"}}>{t.start}</button>
+    {showRecover&&<button onClick={recoverSession} style={{width:"100%",background:G.mint,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:10}}>
+      {langRef.current==="fi"?"🔄 Palauta keskeneräinen sessio":"🔄 Recover previous session"}
+    </button>}
+    <button onClick={()=>{clearSession();setShowRecover(false);startInterview();}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:700,cursor:"pointer"}}>{t.start}</button>
   </div></div>);
 
   const phaseText=(()=>{if(screen==="planning"&&slides.length>0)return t.phases.planning+" "+(slideIdx+1)+"/"+slides.length+(slides[slideIdx]?" — "+slides[slideIdx].label:"");if(screen==="insights"&&focusType)return t.phases.insights+": "+focusType;return t.phases[screen]||"";})();
