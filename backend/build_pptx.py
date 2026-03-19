@@ -161,7 +161,7 @@ def build_bullets_slide(prs, d, def_label):
 
 
 def build_two_col_slide(prs, d, def_label):
-    """Layout 6: Title + content 2 column"""
+    """Layout 6: Title + content 2 column — värikoodattu, ilman tuplabulletteja."""
     slide = add_slide(prs, L["two_col"])
     title_ph = get_ph(slide, 0)
     if title_ph:
@@ -170,57 +170,54 @@ def build_two_col_slide(prs, d, def_label):
     left = d.get("left", {})
     right = d.get("right", {})
 
-    # Vasen kolumni: idx=17
-    left_ph = get_ph(slide, 17)
-    if left_ph and left:
-        tf = left_ph.text_frame
-        tf.clear()
-        tf.word_wrap = True
-        items = left.get("items", [])[:8]
-        font_size = 11 if len(items) > 6 else 13
-        p = tf.paragraphs[0]
-        r = p.add_run()
-        r.text = left.get("title", "")
-        r.font.name = FONT
-        r.font.size = Pt(14)
-        r.font.bold = True
-        r.font.color.rgb = C["deepBlue"]
-        for item in items:
-            p2 = tf.add_paragraph()
-            p2.space_after = Pt(2)
-            r2 = p2.add_run()
-            r2.text = "• " + item
-            r2.font.name = FONT
-            r2.font.size = Pt(font_size)
-            r2.font.color.rgb = C["deepBlue"]
+    # Värit vasemmalle ja oikealle (nykytila=punainen, tavoite=vihreä tai neutraali)
+    left_title = left.get("title", "")
+    right_title = right.get("title", "")
+    is_before_after = any(w in (left_title + right_title).lower() for w in
+        ["nykytila", "current", "ennen", "before", "ongelma", "problem", "haaste", "challenge"])
 
-    # Oikea kolumni: idx=18
-    right_ph = get_ph(slide, 18)
-    if right_ph and right:
-        tf = right_ph.text_frame
+    left_accent = C["red"] if is_before_after else C["digitalBlue"]
+    right_accent = C["green"] if is_before_after else C["orange"]
+
+    def fill_column(ph, col_data, accent_color, items_max=8):
+        if not ph or not col_data:
+            return False
+        tf = ph.text_frame
         tf.clear()
         tf.word_wrap = True
-        items = right.get("items", [])[:8]
+        items = col_data.get("items", [])[:items_max]
         font_size = 11 if len(items) > 6 else 13
+
+        # Otsikko väripalkilla
         p = tf.paragraphs[0]
+        p.space_after = Pt(6)
         r = p.add_run()
-        r.text = right.get("title", "")
+        r.text = col_data.get("title", "")
         r.font.name = FONT
         r.font.size = Pt(14)
         r.font.bold = True
-        r.font.color.rgb = C["deepBlue"]
+        r.font.color.rgb = accent_color
+
         for item in items:
+            # Poista mahdollinen tupla-bullet
+            clean_item = item.lstrip("•·–- ").strip() if item.startswith(("•", "·", "–", "- ")) else item
             p2 = tf.add_paragraph()
-            p2.space_after = Pt(2)
+            p2.space_after = Pt(3)
             r2 = p2.add_run()
-            r2.text = "• " + item
+            r2.text = "• " + clean_item
             r2.font.name = FONT
             r2.font.size = Pt(font_size)
             r2.font.color.rgb = C["deepBlue"]
+        return True
+
+    left_ph = get_ph(slide, 17)
+    right_ph = get_ph(slide, 18)
+    l_ok = fill_column(left_ph, left, left_accent)
+    r_ok = fill_column(right_ph, right, right_accent)
 
     used = {0}
-    if left_ph and left: used.add(17)
-    if right_ph and right: used.add(18)
+    if l_ok: used.add(17)
+    if r_ok: used.add(18)
     hide_unused_ph(slide, used)
 
 
@@ -471,15 +468,17 @@ def build_kpi_slide(prs, d, def_label):
         bar.fill.fore_color.rgb = accent
         bar.line.fill.background()
 
-        # Iso luku
+        # Iso luku — automaattinen fonttikoon pienennys pitkille arvoille
+        val_text = str(kpi.get("value", "—"))
+        val_font = 36 if len(val_text) <= 6 else 28 if len(val_text) <= 10 else 22
         num_box = slide.shapes.add_textbox(Inches(x + 0.25), Inches(top_y + 0.3), Inches(card_w - 0.4), Inches(1.2))
         tf = num_box.text_frame
-        tf.word_wrap = True
+        tf.word_wrap = False  # Estä rivitys — skaalaa fonttia mieluummin
         p = tf.paragraphs[0]
         r = p.add_run()
-        r.text = str(kpi.get("value", "—"))
+        r.text = val_text
         r.font.name = FONT
-        r.font.size = Pt(36)
+        r.font.size = Pt(val_font)
         r.font.bold = True
         r.font.color.rgb = accent
 

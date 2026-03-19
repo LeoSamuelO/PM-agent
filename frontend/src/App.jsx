@@ -154,9 +154,36 @@ async function callAPI(messages, systemExtra, forceSearch, lang) {
     body:JSON.stringify({messages,system,useSearch}),
   }, { timeout: useSearch ? 120000 : 90000 }); // Search-kutsut saavat enemmän aikaa
   const d = await r.json();
-  if(r.status===401){localStorage.removeItem("pm_token");window.location.reload();}
+  if(r.status===401){
+    // Yritä automaattista uudelleenkirjautumista ennen reload:ia
+    const relogged = await tryAutoRelogin();
+    if (relogged) {
+      // Toista alkuperäinen pyyntö uudella tokenilla
+      const r2 = await fetchWithRetry(API+"/api/chat",{
+        method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
+        body:JSON.stringify({messages,system,useSearch}),
+      }, { timeout: useSearch ? 120000 : 90000 });
+      const d2 = await r2.json();
+      if(r2.status===401) throw new Error("Istunto vanhentunut — kirjaudu uudelleen.");
+      if(d2.error)throw new Error(d2.error);
+      return d2.text;
+    }
+    throw new Error("Istunto vanhentunut — kirjaudu uudelleen.");
+  }
   if(d.error)throw new Error(d.error);
   return d.text;
+}
+
+// Automaattinen uudelleenkirjautuminen — käyttää viimeistä salasanaa
+let _lastPassword = "";
+async function tryAutoRelogin() {
+  if (!_lastPassword) return false;
+  try {
+    const r = await fetch(API+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:_lastPassword})});
+    const d = await r.json();
+    if (d.token) { localStorage.setItem("pm_token", d.token); return true; }
+  } catch {}
+  return false;
 }
 
 // ═══ LASKUJEN VERIFIOINTI ═══
@@ -176,7 +203,7 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
     title:'{"title":"...","tagline":"...","meta":"...","projectLead":"..."}',
     bullets:'{"heading":"...","bullets":["kohta 1","kohta 2"],"note":""}',
     table:'{"heading":"...","columns":["S1","S2","S3"],"rows":[["a","b","c"]]}',
-    gantt:'{"heading":"...","totalWeeks":8,"frozenWeek":null,"phases":[{"name":"Vaihe 1","start":1,"end":2,"critical":false}]}',
+    gantt:'{"heading":"...","totalWeeks":26,"frozenWeek":null,"phases":[{"name":"Suunnittelu","start":1,"end":4,"critical":true},{"name":"Kehitys","start":5,"end":16,"critical":true},{"name":"Testaus","start":14,"end":20,"critical":false}]}  HUOM: start/end = SUHTEELLINEN viikkonumero (1=projektin 1. viikko). EI ISO-viikkoja!',
     cards:'{"heading":"...","cards":[{"icon":"⚠️","title":"...","desc":"...","level":"high"}]}',
     "two-col":'{"heading":"...","left":{"title":"...","items":["..."]},"right":{"title":"...","items":["..."]}}',
     bar_chart:'{"heading":"...","categories":["Q1","Q2","Q3"],"series":[{"name":"Budjetti","values":[100,200,150]},{"name":"Toteutunut","values":[90,210,140]}],"unit":"EUR","note":""}',
@@ -185,7 +212,7 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
     kpi:'{"heading":"...","kpis":[{"value":"€420k","label":"Investointi","desc":"NordCode Shopify Plus"},{"value":"2.3v","label":"Takaisinmaksu","desc":"ROI-laskelma"}],"note":""}',
   };
   let extra = "";
-  if (layout === "gantt") extra = "\n\nGANTT: Jokainen vaihe = OMA rivi (MAX 15). start/end = viikkonumeroita. totalWeeks: 3kk=13, 6kk=26. Nimet max 35 merkkiä.";
+  if (layout === "gantt") extra = "\n\nGANTT KRIITTISTÄ: start ja end OVAT NUMEROITA 1-52 (suhteellinen viikko projektin alusta). EI ISO-viikkoja (2026-W14), EI päivämääriä! Esim: {\"totalWeeks\":26,\"phases\":[{\"name\":\"Vaihe 1\",\"start\":1,\"end\":4,\"critical\":true}]}. totalWeeks = projektin kokonaiskesto viikkoina. Max 15 vaihetta, nimet max 35 merkkiä.";
   else if (layout === "bar_chart") extra = "\n\nPYLVÄSKAAVIO: categories = X-akselin nimet. series = yksi tai useampi datasarja. values PITÄÄ olla lukuja (ei tekstiä). unit = yksikkö (EUR, %, kpl).";
   else if (layout === "pie_chart") extra = "\n\nPIIRAKKAKAAVIO: slices = 3-8 palaa. value = numeerinen arvo. Prosentit tai absoluuttiset luvut.";
   else if (layout === "line_chart") extra = "\n\nVIIVAKAAVIO: categories = X-akseli (ajanjaksot). series = trendilinjat. values = lukuja.";
@@ -193,7 +220,35 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
   const r = await callAPI([{role:"user",content:
     `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä. Luvut AINA numeroina (ei "420k" vaan 420000).${extra}`}],
     "Olet JSON-muunnin. Vastaa VAIN validilla JSON-objektilla.", false, lang);
-  try { const m=r.match(/\{[\s\S]*\}/); if(m)return JSON.parse(m[0]); }catch(e){console.error("JSON:",e);}
+  try {
+    const m=r.match(/\{[\s\S]*\}/);
+    if(m){
+      let parsed=JSON.parse(m[0]);
+      // POST-PROCESSING: Korjaa gantt ISO-viikot → suhteelliset numerot
+      if(layout==="gantt"&&parsed.phases?.length>0){
+        const hasIsoWeeks=parsed.phases.some(p=>typeof p.start==="string"&&/\d{4}-W\d+/.test(p.start));
+        const hasDateStrings=parsed.phases.some(p=>typeof p.start==="string"&&!(/^\d+$/.test(p.start)));
+        if(hasIsoWeeks||hasDateStrings){
+          // Muunna ISO-viikot (2026-W14) tai muut merkkijonot → suhteelliset viikkonumerot
+          let minWeek=Infinity;
+          const weekNums=parsed.phases.map(p=>{
+            let s=p.start,e=p.end;
+            if(typeof s==="string"){const wm=s.match(/W(\d+)/);s=wm?parseInt(wm[1]):parseInt(s)||1;}
+            if(typeof e==="string"){const wm=e.match(/W(\d+)/);e=wm?parseInt(wm[1]):parseInt(e)||s;}
+            if(s<minWeek)minWeek=s;
+            return{...p,start:s,end:e};
+          });
+          // Normalisoi: minimi = 1
+          parsed.phases=weekNums.map(p=>({...p,start:p.start-minWeek+1,end:p.end-minWeek+1,critical:p.critical||p.status==="critical"}));
+          const maxEnd=Math.max(...parsed.phases.map(p=>p.end));
+          parsed.totalWeeks=Math.max(parsed.totalWeeks||0,maxEnd);
+        }
+        // Varmista numerot
+        parsed.phases=parsed.phases.map(p=>({...p,start:parseInt(p.start)||1,end:parseInt(p.end)||parseInt(p.start)||1,critical:!!p.critical}));
+      }
+      return parsed;
+    }
+  }catch(e){console.error("JSON:",e);}
   return null;
 }
 
@@ -271,12 +326,16 @@ export default function App() {
         const r=await fetch(API+"/health",{signal:AbortSignal.timeout(5000)});
         if(!r.ok)console.warn("Health check failed:",r.status);
       }catch(e){console.warn("Keepalive ping failed:",e.message);}
-      // Tarkista token voimassaolo
+      // Tarkista token voimassaolo — yritä auto-relogin ensin
       try{
         const r2=await fetch(API+"/api/verify-numbers",{
           method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
           body:JSON.stringify({text:""}),signal:AbortSignal.timeout(5000)});
-        if(r2.status===401){localStorage.removeItem("pm_token");setAuthed(false);}
+        if(r2.status===401){
+          const ok=await tryAutoRelogin();
+          if(!ok){localStorage.removeItem("pm_token");setAuthed(false);}
+          else console.log("🔄 Token refreshed automatically");
+        }
       }catch{}
     };
     // Ping heti ja sitten joka 4 min (token 8h, Render idle 15min)
@@ -740,7 +799,7 @@ export default function App() {
     }setBusy(false);
   }
 
-  async function doLogin(){if(!pwInput)return;try{const r=await fetch(API+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwInput})});const d=await r.json();if(d.token){localStorage.setItem("pm_token",d.token);setAuthed(true);}else setPwError(true);}catch{setPwError(true);}}
+  async function doLogin(){if(!pwInput)return;try{const r=await fetch(API+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwInput})});const d=await r.json();if(d.token){localStorage.setItem("pm_token",d.token);_lastPassword=pwInput;setAuthed(true);}else setPwError(true);}catch{setPwError(true);}}
 
   // ═══ RENDER ═══
   const canSend=!busy&&(input.trim().length>0||attachments.length>0);
