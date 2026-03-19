@@ -54,21 +54,17 @@ SÄÄNNÖT:
 5. ÄLÄ ARVAA päivämääriä tai lukuja. Epävarma → käytä web-hakua.
 6. Ole RATKAISUKESKEINEN: Analysoi, vertaile, tee johtopäätöksiä. Ota kantaa ja perustele.
 7. LASKE AINA kun materiaalissa on lukuja: ROI, takaisinmaksu, säästöt, vertailut. Näytä laskukaava ja tulos. Esim: "Säästö: 270k/v - 42k/v lisenssit = 228k/v netto → takaisinmaksu 515k / 228k = 2,3 vuotta".
-8. KÄYTÄ KUVAAJIA: Käytettävissä olevat layoutit:
-   - kpi: AVAINLUVUT (2-4 isoa lukua korteissa — käytä ROI:lle, säästöille, KPI-mittareille)
-   - table: taulukko (MAX 7 riviä! Jos enemmän → jaa kahdelle dialle tai käytä bar_chart)
-   - gantt: aikataulu
-   - cards: riskit, prioriteetit (2-4 korttia, värikoodattu vakavuuden mukaan)
-   - two-col: vertailu (nykytila/tavoite, pros/cons)
-   - bar_chart: pylväskaavio (budjetti, kustannukset, vertailu — SUOSI tätä lukuvertailuihin)
-   - pie_chart: piirakkakaavio (jakaumat, osuudet)
-   - line_chart: viivakaavio (trendit, ennusteet)
-   - bullets: VAIN kun ei lukuja eikä vertailuja
-   TÄRKEÄÄ VISUAALINEN VAIHTELU:
-   - ÄLÄ KOSKAAN käytä samaa layoutia 3+ kertaa peräkkäin
-   - Suosi kpi-layoutia avainluvuille taulukon sijaan
-   - Suosi bar_chart/pie_chart lukuvertailuihin taulukon sijaan
-   - Taulukoissa MAX 7 riviä — pilko isot taulukot
+8. VALITSE SOPIVIN LAYOUT sisällön perusteella:
+   - kpi: kun haluat korostaa 2-4 avainlukua isolla (€, %, vuosia) — tiivistelmä tai johtopäätös
+   - bar_chart: kun vertaillaan lukuja vaihtoehtojen välillä (hinnat, kustannukset)
+   - pie_chart: kun näytetään kokonaisuuden jakautuminen osiin (budjetti, osuudet)
+   - line_chart: kun näytetään kehitys ajan yli (trendi, ennuste)
+   - table: kun tarvitaan teksti+luku-yhdistelmiä vertailussa. Iso taulukko (8+ riviä) → harkitse jakamista
+   - gantt: projektin aikataulu
+   - cards: 2-4 korttia (riskit, prioriteetit, päätökset) — värikoodattu vakavuuden mukaan
+   - two-col: rinnakkaisvertailu (nykytila/tavoite, pros/cons)
+   - bullets: kun sisältö on puhtaasti tekstiä ilman lukuja
+   Vaihtele layouteja luontevasti sisällön mukaan.
 9. Tarjoa 2 vaihtoehtoa — mutta kerro kumpi on suosituksesi ja miksi.
 ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja.`;
   return `You are an experienced project consultant at Gofore. ALWAYS communicate in English.
@@ -82,21 +78,17 @@ RULES:
 5. NEVER GUESS dates or numbers. Unsure → use web search.
 6. Be SOLUTION-ORIENTED: Analyze, compare, draw conclusions. Take a position and justify.
 7. ALWAYS CALCULATE when data has numbers: ROI, payback, savings, comparisons. Show formula and result.
-8. USE CHARTS: Available layouts:
-   - kpi: KEY METRICS (2-4 big numbers in cards — use for ROI, savings, KPIs)
-   - table: table (MAX 7 rows! If more → split across slides or use bar_chart)
-   - gantt: timeline
-   - cards: risks, priorities (2-4 cards, color-coded by severity)
-   - two-col: comparison (current/target, pros/cons)
-   - bar_chart: bar chart (budget, costs, comparison — PREFER this for number comparisons)
-   - pie_chart: pie chart (distributions, shares)
-   - line_chart: line chart (trends, forecasts)
-   - bullets: ONLY when no numbers or comparisons
-   IMPORTANT VISUAL VARIETY:
-   - NEVER use the same layout 3+ times in a row
-   - Prefer kpi layout for key numbers instead of tables
-   - Prefer bar_chart/pie_chart for number comparisons over tables
-   - Tables MAX 7 rows — split large tables
+8. CHOOSE THE BEST LAYOUT based on content:
+   - kpi: highlight 2-4 key numbers prominently (€, %, years) — summary or conclusion
+   - bar_chart: compare numbers across options (prices, costs)
+   - pie_chart: show how a whole breaks into parts (budget, shares)
+   - line_chart: show change over time (trend, forecast)
+   - table: text+number mix in comparisons. Large table (8+ rows) → consider splitting
+   - gantt: project timeline
+   - cards: 2-4 cards (risks, priorities, decisions) — color-coded by severity
+   - two-col: side-by-side comparison (current/target, pros/cons)
+   - bullets: pure text content without numbers
+   Vary layouts naturally based on content.
 9. Offer 2 options — but say which you recommend and why.
 NEVER produce [SLIDE_DATA] or [STRUCTURE_DATA] tags.`;
 }
@@ -543,8 +535,9 @@ export default function App() {
     setScreenSync("structure");addDivider("📐 Vaihe 4 — Diarakenne");
     const fi=langRef.current==="fi";
     const structPrompt=fi
-      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-15 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin mukaan! Max 15 diaa. Tiivistä tarvittaessa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nPAKOLLINEN LAYOUT-JAKAUMA — jokainen esitys TARVITSEE vähintään:\n✅ 1x kpi (avainluvut, ROI, €-summat → ISOT luvut korteissa)\n✅ 1x bar_chart TAI pie_chart (lukuvertailut visuaalisesti)\n✅ 1x two-col TAI cards (vertailut, riskit)\n❌ MAX 2x table koko esityksessä (taulukot ovat tylsiä — käytä kuvaajia!)\n\nISO AIHE = USEAMPI DIA:\n- Budjetti: avainluvut (kpi) + kustannusvertailu (bar_chart) + yksityiskohdat (table)\n- Toimittajat: avainluvut (kpi) + hintavertailu (bar_chart) + ominaisuudet (table) + suositus (two-col)\n- Riskit: yleiskuva (cards) + yksityiskohdat (table)\n- ROI: avainluvut (kpi) + kustannuskehitys (line_chart tai bar_chart)\n\nLAYOUT-VALINTA (suosijärjestys lukudatalle):\n1. kpi — AINA kun on 2-4 avainlukua (€, %, vuosia, viikkoja)\n2. bar_chart — AINA kun vertaillaan lukuja eri vaihtoehtojen välillä\n3. pie_chart — jakaumat, osuudet prosentteina\n4. line_chart — aikasarjat, trendit\n5. table — VASTA kun kaavio ei sovi (teksti+luku sekoitus, MAX 7 riviä)\n\nMuut: gantt (aikataulu), cards (riskit), two-col (pros/cons), bullets (pelkkä teksti)\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
-      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-15 slides)** — detailed plan\n\nScale to material! Max 15 slides. Condense if needed.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nMANDATORY LAYOUT MIX — every presentation NEEDS at least:\n✅ 1x kpi (key metrics, ROI, €-amounts → BIG numbers in cards)\n✅ 1x bar_chart OR pie_chart (number comparisons visually)\n✅ 1x two-col OR cards (comparisons, risks)\n❌ MAX 2x table in entire presentation (tables are boring — use charts!)\n\nBIG TOPIC = MULTIPLE SLIDES:\n- Budget: key numbers (kpi) + cost comparison (bar_chart) + details (table)\n- Vendors: key numbers (kpi) + price comparison (bar_chart) + features (table) + recommendation (two-col)\n- Risks: overview (cards) + details (table)\n- ROI: key numbers (kpi) + cost trend (line_chart or bar_chart)\n\nLAYOUT PREFERENCE ORDER for numeric data:\n1. kpi — ALWAYS when there are 2-4 key numbers (€, %, years, weeks)\n2. bar_chart — ALWAYS when comparing numbers across options\n3. pie_chart — distributions, percentages\n4. line_chart — time series, trends\n5. table — ONLY when chart won't work (text+number mix, MAX 7 rows)\n\nOther: gantt (timeline), cards (risks), two-col (pros/cons), bullets (text only)\n\nAsk: "Which one, or do you want a specific number of slides?"`;
+      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-15 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin laajuuden mukaan. Max 15 diaa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-OPAS — valitse sisällön perusteella:\n- kpi: korostaa 2-4 avainlukua isolla (€420k, +30%, 2.3v) — toimii tiivistelmänä tai johtopäätöksenä\n- bar_chart: vertailee lukuja vaihtoehtojen välillä (hinnat, kustannukset, resurssit)\n- pie_chart: näyttää miten kokonaisuus jakautuu osiin (budjettierittely, osuudet)\n- line_chart: näyttää kehityksen ajan yli (kustannustrendi, ennuste)\n- table: teksti+luku-yhdistelmä vertailussa (ominaisuusmatriisi, arviointiruudukko). Iso taulukko (8+ riviä) → harkitse jakamista kahdelle dialle\n- gantt: projektin aikataulu ja vaiheet\n- cards: 2-4 korttia joissa otsikko+kuvaus+vakavuus (riskit, haasteet, mahdollisuudet)\n- two-col: rinnakkaisvertailu (nykytila vs. tavoite, pros/cons, vaihtoehto A/B)\n- bullets: puhdas teksti ilman lukuja (toimenpiteet, yhteenveto, seuraavat askeleet)\n\nISO AIHE voi tarvita useamman dian, esim:\n- Toimittajavertailu: hintavertailu (bar_chart) + ominaisuudet (table) + suositus (two-col)\n- Riskianalyysi: yleiskuva (cards) + yksityiskohtainen taulukko (table)\n- Budjetti: kokonaiskuva (kpi) + erittely (bar_chart tai pie_chart)\n- ROI: avainluvut (kpi) + kehitys vuosittain (line_chart)\n\nVaihtele layouteja luontevasti — älä toista samaa turhaan, mutta älä myöskään pakota vaihtelua jos sama layout sopii parhaiten.\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
+      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-15 slides)** — detailed plan\n\nScale to material scope. Max 15 slides.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT GUIDE — choose based on content:\n- kpi: highlight 2-4 key numbers prominently (€420k, +30%, 2.3y) — works as summary or conclusion\n- bar_chart: compare numbers across options (prices, costs, resources)\n- pie_chart: show how a whole breaks into parts (budget breakdown, market shares)\n- line_chart: show change over time (cost trend, forecast)\n- table: text+number mix in comparison (feature matrix, evaluation grid). Large table (8+ rows) → consider splitting across slides\n- gantt: project timeline and phases\n- cards: 2-4 cards with title+description+severity (risks, challenges, opportunities)\n- two-col: side-by-side comparison (current vs. target, pros/cons, option A/B)\n- bullets: pure text without numbers (actions, summary, next steps)\n\nBIG TOPICS may need multiple slides, e.g.:\n- Vendor comparison: price comparison (bar_chart) + features (table) + recommendation (two-col)\n- Risk analysis: overview (cards) + detailed analysis (table)\n- Budget: overview (kpi) + breakdown (bar_chart or pie_chart)\n- ROI: key numbers (kpi) + trend over years (line_chart)\n\nVary layouts naturally — don't repeat unnecessarily, but don't force variety if the same layout genuinely fits best.\n\nAsk: "Which one, or do you want a specific number of slides?"`;
+
     const r=await api([{role:"user",content:structPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
     const s=tryParseStructure(strip(r)); if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
