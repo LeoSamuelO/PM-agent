@@ -295,36 +295,34 @@ export default function App() {
   async function runStructureConfirm(userText){
     const has=pendingStructRef.current?.length>0;
     const optChoice=isOptionSelect(userText);
-    // Vaihtoehto B/2 valinta — pyydä AI näyttämään se
-    if(optChoice && (optChoice==="b"||optChoice==="2") && has){
-      const fi=langRef.current==="fi";
-      const r=await api([...recentMessages(3),{role:"user",content:
-        fi?`Valitsin vaihtoehdon B. Näytä VAIN vaihtoehdon B diarakenne lopullisessa numeroidussa listassa. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout`
-          :`I chose option B. Show ONLY option B slide structure as a final numbered list. Title slide always 1. Each row: number + emoji + name - layout`}],
-        "VAIHE: Diarakenne.\n"+buildContext());
-      const s=tryParseStructure(strip(r));
-      if(s){pendingStructRef.current=s;}
-      const confirmed=ensureKansi(pendingStructRef.current);
-      addMsg("assistant",strip(r));
-      addMsg("assistant",T[langRef.current].structureConfirmed);
-      updateSummary("RAKENNE: "+confirmed.map(s=>s.label+"("+s.layout+")").join(", "));
-      startPlanning(confirmed);return;
-    }
-    // Vaihtoehto A/1 tai hyväksyntä — käytä ensimmäistä parsittua
-    if((isShortYes(userText)||optChoice)&&has){
-      const confirmed=ensureKansi(pendingStructRef.current);
-      addMsg("assistant",T[langRef.current].structureConfirmed);
-      updateSummary("RAKENNE: "+confirmed.map(s=>s.label+"("+s.layout+")").join(", "));
-      startPlanning(confirmed);return;
-    }
-    if((isShortYes(userText)||optChoice)&&!has){await runStructureAsk();return;}
     const fi=langRef.current==="fi";
-    const r=await api([...recentMessages(3),{role:"user",content:userText},{role:"user",content:
-      fi?"[JÄRJESTELMÄOHJE] Tee muutokset, näytä lopullinen rakenne. Kansi AINA 1. Jos et ymmärrä käyttäjän pyyntöä, KYSY mitä hän haluaa."
-        :"[SYSTEM] Make changes, show final structure. Title slide always first. If unclear, ASK what the user wants."}],
-      "VAIHE: Diarakenne.\n"+buildContext());
-    const s=tryParseStructure(strip(r));if(s)pendingStructRef.current=s;
-    addMsg("assistant",strip(r));
+
+    // Suora hyväksyntä ("ok", "joo") — käytä tallennettua, MUTTA näytä mitä rakennetaan
+    if(isShortYes(userText)&&has){
+      const confirmed=ensureKansi(pendingStructRef.current);
+      const list=confirmed.map((s,i)=>`${i+1}. ${s.icon} ${s.label} (${s.layout})`).join("\n");
+      addMsg("assistant",(fi?"Rakennetaan tämä:\n":"Building this:\n")+list);
+      addMsg("assistant",T[langRef.current].structureConfirmed);
+      updateSummary("RAKENNE: "+confirmed.map(s=>s.label+"("+s.layout+")").join(", "));
+      startPlanning(confirmed);return;
+    }
+
+    // Mikä tahansa muu — vaihtoehdon valinta, vapaa muutos, "kattavampi", "B", jne.
+    // → Pyydä AI näyttämään LOPULLINEN rakenne puhtaana listana
+    const modifyPrompt=fi
+      ?`Käyttäjän valinta/muutos: "${userText}"\n\nNäytä LOPULLINEN diarakenne yhtenä numeroiduna listana. VAIN YKSI lista. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout\n\nLayoutit: title, bullets, table, gantt, cards, two-col\nKäytä TABLE-layoutia vertailuille ja luvuille, CARDS riskeille, GANTT aikatauluille.`
+      :`User choice/modification: "${userText}"\n\nShow FINAL slide structure as ONE numbered list. Cover always 1. Each row: number + emoji + name - layout\n\nLayouts: title, bullets, table, gantt, cards, two-col`;
+    const r=await api([...recentMessages(3),{role:"user",content:modifyPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
+    const parsed=tryParseStructure(strip(r));
+    if(parsed&&parsed.length>0){
+      pendingStructRef.current=parsed;
+      addMsg("assistant",strip(r));
+      addMsg("assistant",fi?"Hyväksytkö tämän rakenteen? (kyllä/muokkaa lisää)":"Approve this structure? (yes/modify more)");
+    }else{
+      // Parsinta epäonnistui — pyydä uudelleen selkeämmässä muodossa
+      addMsg("assistant",strip(r));
+      addMsg("assistant",fi?"En saanut rakennetta selville. Voitko valita uudelleen?":"Couldn't parse the structure. Can you choose again?");
+    }
   }
 
   // ═══ VAIHE 5 ═══
