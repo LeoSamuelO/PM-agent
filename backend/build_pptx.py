@@ -534,7 +534,7 @@ def build_bar_chart_slide(prs, d, def_label):
 
     chart = slide.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_CLUSTERED,
-        Inches(0.5), Inches(2.1), Inches(12.0), Inches(4.8),
+        Inches(0.5), Inches(2.1), Inches(11.5), Inches(4.2),
         chart_data
     ).chart
 
@@ -558,15 +558,18 @@ def build_bar_chart_slide(prs, d, def_label):
     chart.value_axis.tick_labels.font.size = Pt(8)
     chart.value_axis.tick_labels.font.name = FONT
 
-    # Note
+    # Note — näkyvä teksti kaavion alla
     if d.get("note"):
-        tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(12.0), Inches(0.3))
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(6.5), Inches(11.5), Inches(0.7))
         tf = tb.text_frame
+        tf.word_wrap = True
         r = tf.paragraphs[0].add_run()
-        r.text = d["note"]
+        note_text = d["note"][:200]  # Max 200 merkkiä
+        r.text = note_text
         r.font.name = FONT
-        r.font.size = Pt(8)
-        r.font.color.rgb = C["grey"]
+        r.font.size = Pt(10)
+        r.font.bold = True
+        r.font.color.rgb = C["deepBlue"]
 
 
 def build_pie_chart_slide(prs, d, def_label):
@@ -593,7 +596,7 @@ def build_pie_chart_slide(prs, d, def_label):
 
     chart = slide.shapes.add_chart(
         XL_CHART_TYPE.PIE,
-        Inches(2.0), Inches(2.1), Inches(9.0), Inches(4.8),
+        Inches(2.0), Inches(2.1), Inches(8.5), Inches(4.2),
         chart_data
     ).chart
 
@@ -620,13 +623,15 @@ def build_pie_chart_slide(prs, d, def_label):
     plot.data_labels.show_value = False
 
     if d.get("note"):
-        tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(12.0), Inches(0.3))
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(6.5), Inches(11.5), Inches(0.7))
         tf = tb.text_frame
+        tf.word_wrap = True
         r = tf.paragraphs[0].add_run()
-        r.text = d["note"]
+        r.text = d["note"][:200]
         r.font.name = FONT
-        r.font.size = Pt(8)
-        r.font.color.rgb = C["grey"]
+        r.font.size = Pt(10)
+        r.font.bold = True
+        r.font.color.rgb = C["deepBlue"]
 
 
 def build_line_chart_slide(prs, d, def_label):
@@ -655,7 +660,7 @@ def build_line_chart_slide(prs, d, def_label):
 
     chart = slide.shapes.add_chart(
         XL_CHART_TYPE.LINE_MARKERS,
-        Inches(0.5), Inches(2.1), Inches(12.0), Inches(4.8),
+        Inches(0.5), Inches(2.1), Inches(11.5), Inches(4.2),
         chart_data
     ).chart
 
@@ -676,13 +681,15 @@ def build_line_chart_slide(prs, d, def_label):
     chart.value_axis.tick_labels.font.name = FONT
 
     if d.get("note"):
-        tb = slide.shapes.add_textbox(Inches(0.5), Inches(7.0), Inches(12.0), Inches(0.3))
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(6.5), Inches(11.5), Inches(0.7))
         tf = tb.text_frame
+        tf.word_wrap = True
         r = tf.paragraphs[0].add_run()
-        r.text = d["note"]
+        r.text = d["note"][:200]
         r.font.name = FONT
-        r.font.size = Pt(8)
-        r.font.color.rgb = C["grey"]
+        r.font.size = Pt(10)
+        r.font.bold = True
+        r.font.color.rgb = C["deepBlue"]
 
 
 def build_end_slide(prs):
