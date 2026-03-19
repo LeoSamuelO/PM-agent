@@ -210,6 +210,7 @@ export default function App() {
   const lastProposalRef=useRef({});const summaryRef=useRef("");
   const decisionsRef=useRef([]);  // Isot päätökset: toimittajavalinnat, budjetti, aikataulu jne.
 
+  useEffect(()=>{document.title="PM-Agent | Gofore";},[]);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,busy]);
   function setScreenSync(v){setScreen(v);screenRef.current=v;}
   function setSlideIdxSync(v){setSlideIdx(v);slideIdxRef.current=v;}

@@ -310,11 +310,12 @@ def build_table_slide(prs, d, def_label):
     if not cols or not rows:
         return
 
-    # Poista olemassa olevat taulukot/sisältö content placeholderista
-    # Lisää python-pptx taulukko suoraan slideen
+    # Suodata tyhjät rivit pois
+    rows = [r for r in rows if any(str(cell or "").strip() for cell in r)]
+    if not rows:
+        return
+
     from pptx.util import Inches, Pt
-    from pptx.oxml.ns import qn
-    import lxml.etree as etree
 
     n_cols = len(cols)
     n_rows = len(rows) + 1  # +1 header
