@@ -102,7 +102,7 @@ NEVER produce [SLIDE_DATA] or [STRUCTURE_DATA] tags.`;
 }
 
 // Tunnista milloin haku pitäisi aktivoida automaattisesti
-const SEARCH_TRIGGERS = ["hae","etsi","googla","search","tarkista","verify"];
+const SEARCH_TRIGGERS = ["hae","etsi","googla","search","tarkista","verify","selvitä","tutki"];
 function shouldSearch(text) {
   const lower = text.toLowerCase();
   // Eksplisiittiset triggerit
@@ -116,6 +116,10 @@ function shouldSearch(text) {
   if (/\d{1,2}\.\d{1,2}\.(?:\d{2,4})?/.test(text) || /\d{4}-\d{2}-\d{2}/.test(text)) return true;
   // "ensimmäinen maanantai", "first monday", "viimeinen perjantai"
   if (/(?:ensimmäinen|toinen|kolmas|viimeinen|first|second|third|last)\s+(?:ma|ti|ke|to|pe|la|su|mon|tue|wed|thu|fri|sat|sun)/i.test(text)) return true;
+  // Organisaatioiden tunnistus: "Oy", "Ab", "Oyj", "Ltd", "Inc", "GmbH", "Corp"
+  if (/\b\w+\s+(?:oy[j]?|ab|ltd|inc|gmbh|corp|plc|as|ag|ry|sr)\b/i.test(text)) return true;
+  // Tunnetut yritysnimet / merkit (yleisimmät suomalaiset + kansainväliset)
+  if (/(?:gofore|accenture|tieto|eviden|cgi|solita|vincit|reaktor|futurice|siili|microsoft|google|amazon|aws|salesforce|sap|oracle)\b/i.test(text)) return true;
   return false;
 }
 const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen",bar_chart:"pylväskaavio",pie_chart:"piirakkakaavio",line_chart:"viivakaavio",kpi:"avainluvut"};
@@ -371,7 +375,16 @@ export default function App() {
     return c;
   }
   function recentMessages(n){const all=msgs.filter(m=>m.role==="user"||m.role==="assistant");return all.slice(-(n*2)).map(m=>({role:m.role,content:m.content}));}
-  function updateSummary(note){summaryRef.current=(summaryRef.current?summaryRef.current+"\n":"")+note;}
+  function updateSummary(note){
+    summaryRef.current=(summaryRef.current?summaryRef.current+"\n":"")+note;
+    // Rajoita kontekstin kasvua: jos yli 2500 merkkiä, tiivistä alku
+    if(summaryRef.current.length>2500){
+      const lines=summaryRef.current.split("\n");
+      // Pidä viimeiset 2/3 ja tiivistä alku
+      const keep=Math.max(Math.floor(lines.length*0.66),3);
+      summaryRef.current="[Aiempi konteksti tiivistetty]\n"+lines.slice(-keep).join("\n");
+    }
+  }
   function addDecision(decision){if(!decisionsRef.current.includes(decision))decisionsRef.current=[...decisionsRef.current,decision];}
 
   // ═══ VAIHE 1 ═══
@@ -461,8 +474,8 @@ export default function App() {
     setScreenSync("structure");addDivider("📐 Vaihe 4 — Diarakenne");
     const fi=langRef.current==="fi";
     const structPrompt=fi
-      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-20 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin mukaan! Jos materiaali on laaja (riskejä, budjetteja, aikatauluja), B-vaihtoehto voi olla 15-20 diaa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nISO AIHE = USEAMPI DIA:\n- Riskienhallinta: yleiskuva (cards) + yksityiskohdat (table) + mitigaatiot (bullets)\n- Budjetti: avainluvut (kpi) + vertailu (bar_chart) + erittely (table)\n- Aikataulu: yleiskuva (gantt) + riippuvuudet (table) + milestone-tavoitteet (kpi)\n- Toimittajavertailu: yhteenveto (kpi) + yksityiskohdat (table) + suositus (two-col)\n\nLAYOUT-VALINTA (VAIHTELE!):\n- kpi: avainluvut, ROI, säästöt\n- table: vertailut (MAX 7 riviä! isompi → jaa kahdelle dialle)\n- bar_chart: budjettit, kustannukset\n- pie_chart: jakaumat\n- line_chart: trendit\n- cards: riskit (2-4 korttia)\n- gantt: aikataulu\n- two-col: nykytila/tavoite, pros/cons\n- bullets: teksti ilman lukuja\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
-      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-20 slides)** — detailed plan\n\nScale to material! If material is rich (risks, budgets, timelines), option B can be 15-20 slides.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nBIG TOPIC = MULTIPLE SLIDES:\n- Risk management: overview (cards) + details (table) + mitigations (bullets)\n- Budget: key numbers (kpi) + comparison (bar_chart) + breakdown (table)\n- Timeline: overview (gantt) + dependencies (table) + milestones (kpi)\n- Vendor comparison: summary (kpi) + details (table) + recommendation (two-col)\n\nLAYOUT SELECTION (VARY!):\n- kpi: key metrics, ROI, savings\n- table: comparisons (MAX 7 rows! larger → split across slides)\n- bar_chart: budgets, costs\n- pie_chart: distributions\n- line_chart: trends\n- cards: risks (2-4 cards)\n- gantt: timeline\n- two-col: current/target, pros/cons\n- bullets: text without numbers\n\nAsk: "Which one, or do you want a specific number of slides?"`;
+      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-15 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin mukaan! Jos materiaali on laaja, käytä max 15 diaa (järjestelmän raja). Tiivistä tarvittaessa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nISO AIHE = USEAMPI DIA:\n- Riskienhallinta: yleiskuva (cards) + yksityiskohdat (table) + mitigaatiot (bullets)\n- Budjetti: avainluvut (kpi) + vertailu (bar_chart) + erittely (table)\n- Aikataulu: yleiskuva (gantt) + riippuvuudet (table) + milestone-tavoitteet (kpi)\n- Toimittajavertailu: yhteenveto (kpi) + yksityiskohdat (table) + suositus (two-col)\n\nLAYOUT-VALINTA (VAIHTELE!):\n- kpi: avainluvut, ROI, säästöt\n- table: vertailut (MAX 7 riviä! isompi → jaa kahdelle dialle)\n- bar_chart: budjettit, kustannukset\n- pie_chart: jakaumat\n- line_chart: trendit\n- cards: riskit (2-4 korttia)\n- gantt: aikataulu\n- two-col: nykytila/tavoite, pros/cons\n- bullets: teksti ilman lukuja\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
+      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-15 slides)** — detailed plan\n\nScale to material! If material is rich, use up to 15 slides (system limit). Condense if needed.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nBIG TOPIC = MULTIPLE SLIDES:\n- Risk management: overview (cards) + details (table) + mitigations (bullets)\n- Budget: key numbers (kpi) + comparison (bar_chart) + breakdown (table)\n- Timeline: overview (gantt) + dependencies (table) + milestones (kpi)\n- Vendor comparison: summary (kpi) + details (table) + recommendation (two-col)\n\nLAYOUT SELECTION (VARY!):\n- kpi: key metrics, ROI, savings\n- table: comparisons (MAX 7 rows! larger → split across slides)\n- bar_chart: budgets, costs\n- pie_chart: distributions\n- line_chart: trends\n- cards: risks (2-4 cards)\n- gantt: timeline\n- two-col: current/target, pros/cons\n- bullets: text without numbers\n\nAsk: "Which one, or do you want a specific number of slides?"`;
     const r=await api([{role:"user",content:structPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
     const s=tryParseStructure(strip(r)); if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
@@ -489,7 +502,13 @@ export default function App() {
     });
   }
 
-  function ensureKansi(s){if(!s?.length)return[{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}];return s[0].layout==="title"?s:[{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"},...s];}
+  const MAX_SLIDES=15;
+  function ensureKansi(s){
+    if(!s?.length)return[{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"}];
+    let r=s[0].layout==="title"?s:[{id:"kansi",label:"Kansi",icon:"🎯",layout:"title"},...s];
+    if(r.length>MAX_SLIDES){console.warn("Slide limit:",r.length,"→",MAX_SLIDES);r=r.slice(0,MAX_SLIDES);}
+    return r;
+  }
 
   async function runStructureConfirm(userText){
     const has=pendingStructRef.current?.length>0;
@@ -576,6 +595,8 @@ export default function App() {
   }
 
   async function runPlanning(userText){
+    // Race condition -suoja: älä käsittele viestiä jos AI vielä generoi ehdotusta
+    if(proposingRef.current){addMsg("assistant",langRef.current==="fi"?"⏳ Odota, diaehdotus generoituu...":"⏳ Wait, slide proposal is being generated...");return;}
     const cur=slidesRef.current;const idx=slideIdxRef.current;const slide=cur[idx];
     const cancelWords=["en mitään","ei muutoksia","peruuta","nothing","no changes","cancel","nevermind"];
     const isCancel=editingSlide!==null&&cancelWords.some(w=>userText.trim().toLowerCase().includes(w));
