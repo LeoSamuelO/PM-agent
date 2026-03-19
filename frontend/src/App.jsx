@@ -229,17 +229,24 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
         const hasIsoWeeks=parsed.phases.some(p=>typeof p.start==="string"&&/\d{4}-W\d+/.test(p.start));
         const hasDateStrings=parsed.phases.some(p=>typeof p.start==="string"&&!(/^\d+$/.test(p.start)));
         if(hasIsoWeeks||hasDateStrings){
-          // Muunna ISO-viikot (2026-W14) tai muut merkkijonot → suhteelliset viikkonumerot
-          let minWeek=Infinity;
-          const weekNums=parsed.phases.map(p=>{
-            let s=p.start,e=p.end;
-            if(typeof s==="string"){const wm=s.match(/W(\d+)/);s=wm?parseInt(wm[1]):parseInt(s)||1;}
-            if(typeof e==="string"){const wm=e.match(/W(\d+)/);e=wm?parseInt(wm[1]):parseInt(e)||s;}
-            if(s<minWeek)minWeek=s;
+          // Muunna ISO-viikot (2026-W14) tai muut merkkijonot → absoluuttiset viikkonumerot
+          // Huomioi vuosi: 2026-W50 → 2026*52+50=105362, 2027-W02 → 2027*52+2=105406
+          const toAbsWeek=(str)=>{
+            if(typeof str!=="string")return parseInt(str)||1;
+            const isoM=str.match(/(\d{4})-?W(\d+)/);
+            if(isoM)return parseInt(isoM[1])*52+parseInt(isoM[2]);
+            const wm=str.match(/W(\d+)/);
+            if(wm)return parseInt(wm[1]);
+            return parseInt(str)||1;
+          };
+          let minAbs=Infinity;
+          const absWeeks=parsed.phases.map(p=>{
+            const s=toAbsWeek(p.start),e=toAbsWeek(p.end);
+            if(s<minAbs)minAbs=s;
             return{...p,start:s,end:e};
           });
-          // Normalisoi: minimi = 1
-          parsed.phases=weekNums.map(p=>({...p,start:p.start-minWeek+1,end:p.end-minWeek+1,critical:p.critical||p.status==="critical"}));
+          // Normalisoi: minimi = 1 (suhteellinen projektin alusta)
+          parsed.phases=absWeeks.map(p=>({...p,start:p.start-minAbs+1,end:p.end-minAbs+1,critical:p.critical||p.status==="critical"||p.status==="kriittinen"}));
           const maxEnd=Math.max(...parsed.phases.map(p=>p.end));
           parsed.totalWeeks=Math.max(parsed.totalWeeks||0,maxEnd);
         }
