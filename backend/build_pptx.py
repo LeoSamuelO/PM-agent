@@ -249,8 +249,8 @@ def build_cards_slide(prs, d, def_label):
     gap = 0.25
     total_w = 12.5 - 2 * margin
     card_w = (total_w - (nc - 1) * gap) / nc
-    card_h = 4.2
-    top_y = 1.9
+    card_h = 4.0
+    top_y = 2.1  # Otsikko-placeholder loppuu ~1.86 — riittävä marginaali
 
     for i, card in enumerate(cards):
         x = margin + i * (card_w + gap)

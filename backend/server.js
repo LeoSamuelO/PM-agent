@@ -71,6 +71,13 @@ app.post("/api/build-pptx", async (req, res) => {
     if (!slideData[sd.id]) slideData[sd.id] = getDefault(sd);
   }
 
+  // Luo tiedostonimi projektin nimestä
+  const titleSlide = slideStructure.find(s => s.layout === "title");
+  const titleData = titleSlide ? slideData[titleSlide.id] : {};
+  const projectName = (titleData.title || "projektisuunnitelma")
+    .replace(/[^a-zäöåA-ZÄÖÅ0-9\s-]/g, "").trim().replace(/\s+/g, "_").substring(0, 50);
+  const fileName = projectName + ".pptx";
+
   const outPath = path.join(__dirname, "pptx_" + Date.now() + ".pptx");
   const script = path.join(__dirname, "build_pptx.py");
   const tmpl = path.join(__dirname, "Gofore_Template.pptx");
@@ -88,7 +95,7 @@ app.post("/api/build-pptx", async (req, res) => {
 
         if (fs.existsSync(outPath)) {
           console.log("✅ Gofore-template PPTX OK");
-          return res.download(outPath, "projektisuunnitelma.pptx", () => fs.unlink(outPath, () => {}));
+          return res.download(outPath, fileName, () => fs.unlink(outPath, () => {}));
         }
       }
     } catch (e) {
@@ -101,7 +108,7 @@ app.post("/api/build-pptx", async (req, res) => {
   console.log("⚠️ Fallback: pptxgenjs");
   try {
     const fbPath = await buildFallbackPPTX(slideData, slideStructure);
-    res.download(fbPath, "projektisuunnitelma.pptx", () => fs.unlink(fbPath, () => {}));
+    res.download(fbPath, fileName, () => fs.unlink(fbPath, () => {}));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
