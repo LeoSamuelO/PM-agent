@@ -241,9 +241,17 @@ def build_cards_slide(prs, d, def_label):
         return
 
     level_colors = {
-        "high": C["red"], "korkea": C["red"],
-        "medium": C["yellow"], "keski": C["yellow"],
-        "low": C["green"], "matala": C["green"],
+        "high": C["red"], "korkea": C["red"], "critical": C["red"], "kriittinen": C["red"],
+        "medium": C["yellow"], "keski": C["yellow"], "moderate": C["yellow"],
+        "low": C["green"], "matala": C["green"], "minor": C["green"], "vähäinen": C["green"],
+    }
+    level_bg = {
+        "high": RGBColor(0xFF, 0xEB, 0xEE), "korkea": RGBColor(0xFF, 0xEB, 0xEE),
+        "critical": RGBColor(0xFF, 0xEB, 0xEE), "kriittinen": RGBColor(0xFF, 0xEB, 0xEE),
+        "medium": RGBColor(0xFF, 0xF8, 0xE1), "keski": RGBColor(0xFF, 0xF8, 0xE1),
+        "moderate": RGBColor(0xFF, 0xF8, 0xE1),
+        "low": RGBColor(0xE8, 0xF5, 0xE9), "matala": RGBColor(0xE8, 0xF5, 0xE9),
+        "minor": RGBColor(0xE8, 0xF5, 0xE9), "vähäinen": RGBColor(0xE8, 0xF5, 0xE9),
     }
 
     nc = len(cards)
@@ -258,12 +266,13 @@ def build_cards_slide(prs, d, def_label):
         x = margin + i * (card_w + gap)
         col = level_colors.get(str(card.get("level", "")).lower(), C["digitalBlue"])
 
-        # Kortin tausta
+        # Kortin tausta — värisävy vakavuuden mukaan
+        card_bg_color = level_bg.get(str(card.get("level", "")).lower(), C["white"])
         bg = slide.shapes.add_shape(1, Inches(x), Inches(top_y), Inches(card_w), Inches(card_h))
         bg.fill.solid()
-        bg.fill.fore_color.rgb = C["white"]
-        bg.line.color.rgb = C["silver"]
-        bg.line.width = Pt(1)
+        bg.fill.fore_color.rgb = card_bg_color
+        bg.line.color.rgb = col
+        bg.line.width = Pt(1.5)
         bg.shadow.inherit = False
 
         # Väripalkkki ylhäällä
@@ -297,14 +306,47 @@ def build_cards_slide(prs, d, def_label):
             r2.font.color.rgb = C["grey"]
 
 
+def _detect_cell_sentiment(val):
+    """Tunnista solun sisällön 'sävy': positive, negative, warning, neutral, highlight."""
+    s = str(val or "").strip().lower()
+    # Negatiiviset
+    if any(w in s for w in ["high risk", "korkea", "high", "huono", "bad", "poor", "low confidence",
+                             "questionable", "limited", "basic", "decline", "decreasing"]):
+        if any(w in s for w in ["high confidence", "high (proven", "highest", "very high"]):
+            return "positive"
+        return "negative"
+    # Positiiviset
+    if any(w in s for w in ["low risk", "matala", "good", "hyvä", "excellent", "full", "proven",
+                             "very high", "highest", "growth", "improvement", "ready"]):
+        return "positive"
+    # Varoitus / keskitaso
+    if any(w in s for w in ["medium", "keski", "moderate", "partial"]):
+        return "warning"
+    # Numeerinen: negatiivinen luku
+    import re
+    num_match = re.match(r'^[€$]?\s*-\s*[\d,.]+', s)
+    if num_match:
+        return "negative"
+    return "neutral"
+
+
+# Sentimenttivärit — hillityt mutta selkeät
+SENT_COLORS = {
+    "positive":  {"bg": RGBColor(0xE8, 0xF5, 0xE9), "fg": RGBColor(0x2E, 0x7D, 0x32)},  # Vihreä
+    "negative":  {"bg": RGBColor(0xFF, 0xEB, 0xEE), "fg": RGBColor(0xC6, 0x28, 0x28)},  # Punainen
+    "warning":   {"bg": RGBColor(0xFF, 0xF8, 0xE1), "fg": RGBColor(0xF5, 0x7F, 0x17)},  # Keltainen/oranssi
+    "neutral":   {"bg": None, "fg": None},
+    "highlight": {"bg": RGBColor(0xE3, 0xF2, 0xFD), "fg": RGBColor(0x1B, 0x6C, 0xA8)},  # Sininen
+}
+
+
 def build_table_slide(prs, d, def_label):
-    """Layout 47: Headline + Timeline/table — taulukko"""
+    """Layout 47: Headline + Timeline/table — värikoodattu taulukko."""
     slide = add_slide(prs, L["timeline"])
     title_ph = get_ph(slide, 0)
     if title_ph:
         set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
 
-    # Piilota muut placeholderit — taulukko piirretään käsin
     hide_unused_ph(slide, {0})
 
     cols = d.get("columns", [])
@@ -312,7 +354,6 @@ def build_table_slide(prs, d, def_label):
     if not cols or not rows:
         return
 
-    # Suodata tyhjät rivit pois
     rows = [r for r in rows if any(str(cell or "").strip() for cell in r)]
     if not rows:
         return
@@ -320,20 +361,19 @@ def build_table_slide(prs, d, def_label):
     from pptx.util import Inches, Pt
 
     n_cols = len(cols)
-    n_rows = len(rows) + 1  # +1 header
-    max_rows = 12  # Max rivejä jotka mahtuvat dialle
+    n_rows = len(rows) + 1
+    max_rows = 10
     if n_rows > max_rows + 1:
         rows = rows[:max_rows]
         n_rows = max_rows + 1
 
     left   = Inches(0.4)
-    top    = Inches(2.0)  # Otsikon alapuolelle — EI päälle
+    top    = Inches(2.0)
     width  = Inches(12.3)
-    # Dynaaminen rivikorkeus
-    avail_h = 5.2  # 2.0 → 7.2, jätä marginaali
-    row_h = min(0.4, avail_h / n_rows)
+    avail_h = 5.0
+    row_h = min(0.42, avail_h / n_rows)
     height = Inches(row_h * n_rows)
-    font_size = 10 if n_rows <= 8 else 8 if n_rows <= 12 else 7
+    font_size = 10 if n_rows <= 8 else 9 if n_rows <= 10 else 8
 
     table = slide.shapes.add_table(n_rows, n_cols, left, top, width, height).table
 
@@ -355,19 +395,129 @@ def build_table_slide(prs, d, def_label):
         run.font.bold = True
         run.font.color.rgb = C["white"]
 
-    # Data rivit
+    # Data rivit — värikoodaus
     for ri, row in enumerate(rows):
-        bg = C["light"] if ri % 2 == 0 else C["white"]
+        base_bg = C["light"] if ri % 2 == 0 else C["white"]
         for ci, val in enumerate(row[:n_cols]):
             cell = table.cell(ri + 1, ci)
+            text = str(val or "")
+
+            # Värikoodaus: ensimmäinen sarake on aina label → ei värikoodata
+            sent = _detect_cell_sentiment(text) if ci > 0 else "neutral"
+            sc = SENT_COLORS.get(sent, SENT_COLORS["neutral"])
+
             cell.fill.solid()
-            cell.fill.fore_color.rgb = bg
+            cell.fill.fore_color.rgb = sc["bg"] if sc["bg"] else base_bg
+
             p = cell.text_frame.paragraphs[0]
             run = p.add_run()
-            run.text = str(val or "")
+            run.text = text
             run.font.name = FONT
             run.font.size = Pt(font_size)
-            run.font.color.rgb = C["deepBlue"]
+            run.font.color.rgb = sc["fg"] if sc["fg"] else C["deepBlue"]
+            if sent in ("positive", "negative"):
+                run.font.bold = True
+
+    # Alaviite jos datasta tiputettiin rivejä
+    if d.get("note"):
+        tb = slide.shapes.add_textbox(Inches(0.4), Inches(6.8), Inches(11.5), Inches(0.4))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        r = tf.paragraphs[0].add_run()
+        r.text = d["note"][:150]
+        r.font.name = FONT
+        r.font.size = Pt(9)
+        r.font.color.rgb = C["grey"]
+
+
+def build_kpi_slide(prs, d, def_label):
+    """KPI/stat callout -layout: 2-4 isoa lukua vierekkäin, optionaalinen teksti alla."""
+    from pptx.util import Inches, Pt
+
+    slide = add_slide(prs, L["bullets"])
+    title_ph = get_ph(slide, 0)
+    if title_ph:
+        set_text(title_ph.text_frame, d.get("heading", def_label), font_size=28, bold=True, color=C["deepBlue"])
+    hide_unused_ph(slide, {0})
+
+    kpis = d.get("kpis", [])[:4]
+    if not kpis:
+        return
+
+    nk = len(kpis)
+    margin = 0.5
+    gap = 0.3
+    total_w = 12.3 - 2 * margin
+    card_w = (total_w - (nk - 1) * gap) / nk
+    card_h = 3.2
+    top_y = 2.2
+
+    kpi_colors = [C["digitalBlue"], C["orange"], C["mint"], C["deepBlue"]]
+
+    for i, kpi in enumerate(kpis):
+        x = margin + i * (card_w + gap)
+        accent = kpi_colors[i % len(kpi_colors)]
+
+        # Kortti tausta
+        bg = slide.shapes.add_shape(1, Inches(x), Inches(top_y), Inches(card_w), Inches(card_h))
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = C["light"]
+        bg.line.color.rgb = C["silver"]
+        bg.line.width = Pt(0.5)
+
+        # Väripalkki vasemmassa reunassa
+        bar = slide.shapes.add_shape(1, Inches(x), Inches(top_y), Inches(0.06), Inches(card_h))
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = accent
+        bar.line.fill.background()
+
+        # Iso luku
+        num_box = slide.shapes.add_textbox(Inches(x + 0.25), Inches(top_y + 0.3), Inches(card_w - 0.4), Inches(1.2))
+        tf = num_box.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = str(kpi.get("value", "—"))
+        r.font.name = FONT
+        r.font.size = Pt(36)
+        r.font.bold = True
+        r.font.color.rgb = accent
+
+        # Yksikkö/label
+        unit_box = slide.shapes.add_textbox(Inches(x + 0.25), Inches(top_y + 1.4), Inches(card_w - 0.4), Inches(0.4))
+        tf2 = unit_box.text_frame
+        tf2.word_wrap = True
+        p2 = tf2.paragraphs[0]
+        r2 = p2.add_run()
+        r2.text = str(kpi.get("label", ""))
+        r2.font.name = FONT
+        r2.font.size = Pt(14)
+        r2.font.bold = True
+        r2.font.color.rgb = C["deepBlue"]
+
+        # Kuvaus
+        if kpi.get("desc"):
+            desc_box = slide.shapes.add_textbox(Inches(x + 0.25), Inches(top_y + 1.9), Inches(card_w - 0.4), Inches(card_h - 2.2))
+            tf3 = desc_box.text_frame
+            tf3.word_wrap = True
+            p3 = tf3.paragraphs[0]
+            r3 = p3.add_run()
+            r3.text = kpi["desc"][:120]
+            r3.font.name = FONT
+            r3.font.size = Pt(11)
+            r3.font.color.rgb = C["grey"]
+
+    # Alaviite
+    if d.get("note"):
+        tb = slide.shapes.add_textbox(Inches(0.5), Inches(6.5), Inches(11.5), Inches(0.5))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        r = tf.paragraphs[0].add_run()
+        r.text = d["note"][:200]
+        r.font.name = FONT
+        r.font.size = Pt(10)
+        r.font.bold = True
+        r.font.color.rgb = C["deepBlue"]
 
 
 def build_gantt_slide(prs, d, def_label, lang="fi"):
@@ -745,6 +895,8 @@ def build_pptx(slide_data, slide_structure, output_path, lang="fi"):
             build_pie_chart_slide(prs, d, label)
         elif layout == "line_chart":
             build_line_chart_slide(prs, d, label)
+        elif layout == "kpi":
+            build_kpi_slide(prs, d, label)
         else:
             build_bullets_slide(prs, d, label)
 

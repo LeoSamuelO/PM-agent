@@ -282,7 +282,8 @@ function getDefault(sd) {
     gantt:{heading:sd.label||"",totalWeeks:8,phases:[{name:"—",start:1,end:4,critical:false}]},
     bar_chart:{heading:sd.label||"",categories:["A","B","C"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""},
     pie_chart:{heading:sd.label||"",slices:[{label:"—",value:100}],unit:"%",note:""},
-    line_chart:{heading:sd.label||"",categories:["1","2","3"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""} };
+    line_chart:{heading:sd.label||"",categories:["1","2","3"],series:[{name:"Data",values:[0,0,0]}],unit:"",note:""},
+    kpi:{heading:sd.label||"",kpis:[{value:"—",label:"KPI",desc:""}],note:""} };
   return m[sd.layout] || m.bullets;
 }
 

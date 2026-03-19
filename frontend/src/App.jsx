@@ -55,15 +55,20 @@ SÄÄNNÖT:
 6. Ole RATKAISUKESKEINEN: Analysoi, vertaile, tee johtopäätöksiä. Ota kantaa ja perustele.
 7. LASKE AINA kun materiaalissa on lukuja: ROI, takaisinmaksu, säästöt, vertailut. Näytä laskukaava ja tulos. Esim: "Säästö: 270k/v - 42k/v lisenssit = 228k/v netto → takaisinmaksu 515k / 228k = 2,3 vuotta".
 8. KÄYTÄ KUVAAJIA: Käytettävissä olevat layoutit:
-   - table: taulukko (vertailut, luvut, budjetit)
+   - kpi: AVAINLUVUT (2-4 isoa lukua korteissa — käytä ROI:lle, säästöille, KPI-mittareille)
+   - table: taulukko (MAX 7 riviä! Jos enemmän → jaa kahdelle dialle tai käytä bar_chart)
    - gantt: aikataulu
-   - cards: riskit, prioriteetit (2-4 korttia)
+   - cards: riskit, prioriteetit (2-4 korttia, värikoodattu vakavuuden mukaan)
    - two-col: vertailu (nykytila/tavoite, pros/cons)
-   - bar_chart: pylväskaavio (budjetti, kustannukset, vertailu)
+   - bar_chart: pylväskaavio (budjetti, kustannukset, vertailu — SUOSI tätä lukuvertailuihin)
    - pie_chart: piirakkakaavio (jakaumat, osuudet)
    - line_chart: viivakaavio (trendit, ennusteet)
    - bullets: VAIN kun ei lukuja eikä vertailuja
-   Ehdota AINA sopivinta kuvaajaa. Älä laita lukuja bullet-listaan.
+   TÄRKEÄÄ VISUAALINEN VAIHTELU:
+   - ÄLÄ KOSKAAN käytä samaa layoutia 3+ kertaa peräkkäin
+   - Suosi kpi-layoutia avainluvuille taulukon sijaan
+   - Suosi bar_chart/pie_chart lukuvertailuihin taulukon sijaan
+   - Taulukoissa MAX 7 riviä — pilko isot taulukot
 9. Tarjoa 2 vaihtoehtoa — mutta kerro kumpi on suosituksesi ja miksi.
 ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja.`;
   return `You are an experienced project consultant at Gofore. ALWAYS communicate in English.
@@ -78,15 +83,20 @@ RULES:
 6. Be SOLUTION-ORIENTED: Analyze, compare, draw conclusions. Take a position and justify.
 7. ALWAYS CALCULATE when data has numbers: ROI, payback, savings, comparisons. Show formula and result.
 8. USE CHARTS: Available layouts:
-   - table: comparisons, numbers, budgets
+   - kpi: KEY METRICS (2-4 big numbers in cards — use for ROI, savings, KPIs)
+   - table: table (MAX 7 rows! If more → split across slides or use bar_chart)
    - gantt: timeline
-   - cards: risks, priorities (2-4 cards)
+   - cards: risks, priorities (2-4 cards, color-coded by severity)
    - two-col: comparison (current/target, pros/cons)
-   - bar_chart: bar chart (budget, costs, comparison)
+   - bar_chart: bar chart (budget, costs, comparison — PREFER this for number comparisons)
    - pie_chart: pie chart (distributions, shares)
    - line_chart: line chart (trends, forecasts)
    - bullets: ONLY when no numbers or comparisons
-   Always suggest the best chart type. Don't put numbers in bullet lists.
+   IMPORTANT VISUAL VARIETY:
+   - NEVER use the same layout 3+ times in a row
+   - Prefer kpi layout for key numbers instead of tables
+   - Prefer bar_chart/pie_chart for number comparisons over tables
+   - Tables MAX 7 rows — split large tables
 9. Offer 2 options — but say which you recommend and why.
 NEVER produce [SLIDE_DATA] or [STRUCTURE_DATA] tags.`;
 }
@@ -108,7 +118,7 @@ function shouldSearch(text) {
   if (/(?:ensimmäinen|toinen|kolmas|viimeinen|first|second|third|last)\s+(?:ma|ti|ke|to|pe|la|su|mon|tue|wed|thu|fri|sat|sun)/i.test(text)) return true;
   return false;
 }
-const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen",bar_chart:"pylväskaavio",pie_chart:"piirakkakaavio",line_chart:"viivakaavio"};
+const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen",bar_chart:"pylväskaavio",pie_chart:"piirakkakaavio",line_chart:"viivakaavio",kpi:"avainluvut"};
 
 // ═══ FETCH WITH TIMEOUT + RETRY ═══
 async function fetchWithRetry(url, options, { timeout = 90000, retries = 2 } = {}) {
@@ -172,12 +182,14 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
     bar_chart:'{"heading":"...","categories":["Q1","Q2","Q3"],"series":[{"name":"Budjetti","values":[100,200,150]},{"name":"Toteutunut","values":[90,210,140]}],"unit":"EUR","note":""}',
     pie_chart:'{"heading":"...","slices":[{"label":"Osa A","value":40},{"label":"Osa B","value":35},{"label":"Osa C","value":25}],"unit":"%","note":""}',
     line_chart:'{"heading":"...","categories":["Kk1","Kk2","Kk3"],"series":[{"name":"Trendi","values":[10,25,40]}],"unit":"","note":""}',
+    kpi:'{"heading":"...","kpis":[{"value":"€420k","label":"Investointi","desc":"NordCode Shopify Plus"},{"value":"2.3v","label":"Takaisinmaksu","desc":"ROI-laskelma"}],"note":""}',
   };
   let extra = "";
   if (layout === "gantt") extra = "\n\nGANTT: Jokainen vaihe = OMA rivi (MAX 15). start/end = viikkonumeroita. totalWeeks: 3kk=13, 6kk=26. Nimet max 35 merkkiä.";
   else if (layout === "bar_chart") extra = "\n\nPYLVÄSKAAVIO: categories = X-akselin nimet. series = yksi tai useampi datasarja. values PITÄÄ olla lukuja (ei tekstiä). unit = yksikkö (EUR, %, kpl).";
   else if (layout === "pie_chart") extra = "\n\nPIIRAKKAKAAVIO: slices = 3-8 palaa. value = numeerinen arvo. Prosentit tai absoluuttiset luvut.";
   else if (layout === "line_chart") extra = "\n\nVIIVAKAAVIO: categories = X-akseli (ajanjaksot). series = trendilinjat. values = lukuja.";
+  else if (layout === "kpi") extra = "\n\nKPI-LAYOUT: 2-4 avainlukua. Jokainen: value (iso luku, esim '€420k', '2.3v', '+30%'), label (lyhyt otsikko), desc (1 lause). Luvut ovat ISOJA — tee niistä vaikuttavia.";
   const r = await callAPI([{role:"user",content:
     `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä. Luvut AINA numeroina (ei "420k" vaan 420000).${extra}`}],
     "Olet JSON-muunnin. Vastaa VAIN validilla JSON-objektilla.", false, lang);
@@ -377,8 +389,8 @@ export default function App() {
     setScreenSync("structure");addDivider("📐 Vaihe 4 — Diarakenne");
     const fi=langRef.current==="fi";
     const structPrompt=fi
-      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (5-7 diaa)**\n**B: Kattava (8-12 diaa)**\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-VALINTA (käytä monipuolisesti!):\n- Vertailutaulukko (toimittajat, vaihtoehdot) → table\n- Budjetit, kustannukset numeerisesti → bar_chart\n- Jakaumat, osuudet → pie_chart\n- Trendit, ennusteet → line_chart\n- Riskit, haasteet → cards\n- Aikataulu → gantt\n- Nykytila/tavoite, pros/cons → two-col\n- Teksti ilman lukuja → bullets\n\nTÄRKEÄÄ: Jos aiheessa on paljon sisältöä (esim. talousanalyysi, riskit), JAA se 2-3 diaan! Esim:\n- "Budjettivertailu - bar_chart" + "Kustannusjakauma - pie_chart" + "ROI-laskelma - table"\n\nKysy: "Kumpi sopii?"`
-      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (5-7 slides)**\n**B: Comprehensive (8-12 slides)**\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT SELECTION (use variety!):\n- Comparison table → table\n- Budgets, costs numerically → bar_chart\n- Distributions, shares → pie_chart\n- Trends, forecasts → line_chart\n- Risks, challenges → cards\n- Timeline → gantt\n- Current/target, pros/cons → two-col\n- Text without numbers → bullets\n\nIMPORTANT: If topic has lots of content (e.g. financial analysis), SPLIT into 2-3 slides!\n\nAsk: "Which one?"`;
+      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (5-7 diaa)**\n**B: Kattava (8-12 diaa)**\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-VALINTA (VAIHTELE — ÄLÄ toista samaa!):\n- Avainluvut/KPI (ROI, säästö, takaisinmaksu) → kpi (SUOSI tätä avainluvuille!)\n- Vertailutaulukko (MAX 7 riviä!) → table\n- Budjetit, kustannukset numeerisesti → bar_chart (SUOSI tätä lukuvertailuihin!)\n- Jakaumat, osuudet → pie_chart\n- Trendit, ennusteet → line_chart\n- Riskit, haasteet → cards\n- Aikataulu → gantt\n- Nykytila/tavoite, pros/cons → two-col\n- Teksti ilman lukuja → bullets\n\nTÄRKEÄÄ:\n- ÄLÄ käytä samaa layoutia 3+ kertaa! Vaihtele!\n- Isot taulukot (8+ riviä) → jaa kahdeksi diaksi tai käytä bar_chart\n- Avainluvut (ROI, budjetti, aikataulu) → kpi-layout isoine lukuineen, EI taulukko\n\nKysy: "Kumpi sopii?"`
+      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (5-7 slides)**\n**B: Comprehensive (8-12 slides)**\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT SELECTION (VARY — NEVER repeat same layout 3+ times!):\n- Key metrics/KPIs (ROI, savings, payback) → kpi (PREFER for key numbers!)\n- Comparison table (MAX 7 rows!) → table\n- Budgets, costs numerically → bar_chart (PREFER for number comparisons!)\n- Distributions, shares → pie_chart\n- Trends, forecasts → line_chart\n- Risks, challenges → cards\n- Timeline → gantt\n- Current/target, pros/cons → two-col\n- Text without numbers → bullets\n\nIMPORTANT:\n- NEVER use same layout 3+ times! Vary!\n- Large tables (8+ rows) → split into two slides or use bar_chart\n- Key numbers (ROI, budget, timeline) → kpi layout with big numbers, NOT table\n\nAsk: "Which one?"`;
     const r=await api([{role:"user",content:structPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
     const s=tryParseStructure(strip(r)); if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
@@ -390,17 +402,17 @@ export default function App() {
     if(!allLines.length)return null;
     const lines=[];let seen=false;
     for(const line of allLines){const n=parseInt(line.trim());if(n===1&&seen)break;seen=true;lines.push(line);}
-    const kw={kansi:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",cards:"cards","two-col":"two-col",pylväs:"bar_chart",bar_chart:"bar_chart",piirakka:"pie_chart",pie_chart:"pie_chart",viiva:"line_chart",line_chart:"line_chart",budjetti:"bar_chart",kustannus:"bar_chart",jakauma:"pie_chart",trendi:"line_chart"};
+    const kw={kansi:"title",aikataulu:"gantt",gantt:"gantt",taulukko:"table",table:"table",riski:"cards",cards:"cards","two-col":"two-col",pylväs:"bar_chart",bar_chart:"bar_chart",piirakka:"pie_chart",pie_chart:"pie_chart",viiva:"line_chart",line_chart:"line_chart",budjetti:"bar_chart",kustannus:"bar_chart",jakauma:"pie_chart",trendi:"line_chart",kpi:"kpi",avainluku:"kpi",tunnusluku:"kpi",roi:"kpi",metric:"kpi"};
     return lines.map((line,i)=>{
       const iconM=line.match(/(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u);
       const stripped=line.replace(/^\s*\d+[\.\)]\s*/,"").replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu,"").trim();
       const parts=stripped.split(/\s*[-–—]\s*/);const label=parts[0]?.trim()||"Dia "+(i+1);
       const id=label.toLowerCase().replace(/[^a-zäöå0-9]/g,"_").replace(/_+/g,"_").replace(/^_|_$/g,"")||"dia_"+(i+1);
-      const layoutM=line.match(/[-–—]\s*(title|bullets|table|gantt|cards|two-col|bar_chart|pie_chart|line_chart)/i)||line.match(/\((title|bullets|table|gantt|cards|two-col|bar_chart|pie_chart|line_chart)\)/i);
+      const layoutM=line.match(/[-–—]\s*(title|bullets|table|gantt|cards|two-col|bar_chart|pie_chart|line_chart|kpi)/i)||line.match(/\((title|bullets|table|gantt|cards|two-col|bar_chart|pie_chart|line_chart|kpi)\)/i);
       let layout=layoutM?layoutM[1].toLowerCase():"bullets";
       if(!layoutM){for(const[k,v]of Object.entries(kw)){if(line.toLowerCase().includes(k)){layout=v;break;}}}
       if(i===0&&/kansi|cover/i.test(line))layout="title";
-      const layoutIcons={title:"🎯",bullets:"📋",table:"📊",gantt:"📅",cards:"⚠️","two-col":"📑",bar_chart:"📊",pie_chart:"🥧",line_chart:"📈"};
+      const layoutIcons={title:"🎯",bullets:"📋",table:"📊",gantt:"📅",cards:"⚠️","two-col":"📑",bar_chart:"📊",pie_chart:"🥧",line_chart:"📈",kpi:"🔢"};
       return{id,label,icon:iconM?iconM[1]:(layoutIcons[layout]||"📄"),layout};
     });
   }
@@ -473,6 +485,8 @@ export default function App() {
           :`Propose PIE CHART for "${slide.label}".\n\n3-8 slices, each: label and value (EUR or %). State what the chart shows.`,
         line_chart:fi?`Ehdota VIIVAKAAVIO dialle "${slide.label}".\n\nX-akseli: ajanjaksot. 1-3 trendiviivaa. Luvut numeerisina. Kerro trendi.`
           :`Propose LINE CHART for "${slide.label}".\n\nX-axis: time periods. 1-3 trend lines. Numbers. State the trend.`,
+        kpi:fi?`Ehdota AVAINLUVUT dialle "${slide.label}".\n\n2-4 KPI-mittaria. Jokainen:\n- value: ISO luku (esim. "€420k", "+30%", "2.3v", "<2s")\n- label: lyhyt otsikko (esim. "Investointi", "Takaisinmaksu")\n- desc: 1 lause kontekstia\n\nValitse VAIKUTTAVIMMAT luvut materiaalista.`
+          :`Propose KEY METRICS for "${slide.label}".\n\n2-4 KPIs. Each:\n- value: BIG number (e.g. "€420k", "+30%", "2.3y", "<2s")\n- label: short title\n- desc: 1 sentence context\n\nPick the most IMPACTFUL numbers from the material.`,
         bullets:fi?`Ehdota sisältö dialle "${slide.label}".\n\nJos datassa lukuja → EHDOTA taulukkoa, pylväskaaviota tai piirakkakaaviota. Bullet-lista vain kun ei lukuja.\nJokainen bullet = insight, ei pelkkä fakta. LASKE jos lukuja on.`
           :`Propose content for "${slide.label}".\n\nIf data has numbers → SUGGEST table, bar chart or pie chart. Bullets only without numbers.\nEach bullet = insight, not just fact. CALCULATE if numbers exist.`,
       };
