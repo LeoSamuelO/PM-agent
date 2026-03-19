@@ -294,8 +294,23 @@ export default function App() {
 
   async function runStructureConfirm(userText){
     const has=pendingStructRef.current?.length>0;
-    // Vaihtoehdon valinta ("1", "a") rakennevaiheessa = hyväksy oletus (vaihtoehto A)
     const optChoice=isOptionSelect(userText);
+    // Vaihtoehto B/2 valinta — pyydä AI näyttämään se
+    if(optChoice && (optChoice==="b"||optChoice==="2") && has){
+      const fi=langRef.current==="fi";
+      const r=await api([...recentMessages(3),{role:"user",content:
+        fi?`Valitsin vaihtoehdon B. Näytä VAIN vaihtoehdon B diarakenne lopullisessa numeroidussa listassa. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout`
+          :`I chose option B. Show ONLY option B slide structure as a final numbered list. Title slide always 1. Each row: number + emoji + name - layout`}],
+        "VAIHE: Diarakenne.\n"+buildContext());
+      const s=tryParseStructure(strip(r));
+      if(s){pendingStructRef.current=s;}
+      const confirmed=ensureKansi(pendingStructRef.current);
+      addMsg("assistant",strip(r));
+      addMsg("assistant",T[langRef.current].structureConfirmed);
+      updateSummary("RAKENNE: "+confirmed.map(s=>s.label+"("+s.layout+")").join(", "));
+      startPlanning(confirmed);return;
+    }
+    // Vaihtoehto A/1 tai hyväksyntä — käytä ensimmäistä parsittua
     if((isShortYes(userText)||optChoice)&&has){
       const confirmed=ensureKansi(pendingStructRef.current);
       addMsg("assistant",T[langRef.current].structureConfirmed);
@@ -429,8 +444,8 @@ export default function App() {
     const cur=slidesArr||slidesRef.current;const fi=langRef.current==="fi";
     const list=cur.map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
     const instructions=fi
-      ?`${cur.length} diaa on käyty läpi!\n\n${list}\n\nToiminnot:\n• "muokkaa dia 2" — muokkaa sisältöä\n• "poista dia 3" — poistaa dian\n• "lisää dia" — lisää uusi dia\n• "valmis" — generoi PowerPoint`
-      :`${cur.length} slides completed!\n\n${list}\n\nActions:\n• "edit slide 2" — edit content\n• "remove slide 3" — remove slide\n• "add slide" — add new slide\n• "done" — generate PowerPoint`;
+      ?`${cur.length} diaa on käyty läpi!\n\n${list}\n\nToiminnot:\n• "muokkaa dia 2" — muokkaa sisältöä\n• "poista dia 3" — poistaa dian\n• "lisää dia" — lisää uusi dia\n• "korjaa ehdotukset" — tee tarkistuksen ehdottamat muutokset\n• "valmis" — generoi PowerPoint`
+      :`${cur.length} slides completed!\n\n${list}\n\nActions:\n• "edit slide 2" — edit content\n• "remove slide 3" — remove slide\n• "add slide" — add new slide\n• "fix suggestions" — apply review suggestions\n• "done" — generate PowerPoint`;
     setMsgs(p=>[...p,
       {type:"divider",content:T[langRef.current].phases.review},
       {role:"assistant",content:instructions},
@@ -480,9 +495,37 @@ export default function App() {
       setEditingSlide(newSlides.indexOf(newSlide));
       setScreenSync("planning");setSlideIdxSync(newSlides.indexOf(newSlide));
       setTimeout(()=>proposeSlide(newSlides.indexOf(newSlide),newSlides),100);return;}
+    // FIX SUGGESTIONS — tee tarkistuksen ehdottamat muutokset automaattisesti
+    if(["korjaa ehdot","korjaa muutok","fix suggest","tee muutokset","apply fix","tee korjauk"].some(w=>lower.includes(w))){
+      addMsg("assistant",fi?"Toteutan tarkistuksen ehdotukset...":"Applying review suggestions...");
+      // Etsi viimeisin tarkistusviesti
+      const reviewMsg=msgs.filter(m=>m.role==="assistant").reverse().find(m=>
+        m.content&&(m.content.includes("RISTIRIID")||m.content.includes("PUUTTE")||m.content.includes("CONTRADICT")||m.content.includes("SUGGEST")||m.content.includes("PARANNUSEHDOT")));
+      if(reviewMsg){
+        // Käy läpi jokainen dia ja pyydä AI:ta tekemään korjaukset
+        for(let si=0;si<slidesRef.current.length;si++){
+          const sl=slidesRef.current[si];if(sl.layout==="title")continue;
+          const proposal=lastProposalRef.current[sl.id]||"";if(!proposal)continue;
+          const fixR=await api([{role:"user",content:
+            fi?`Tarkistuksen palaute:\n${reviewMsg.content.substring(0,800)}\n\nDian "${sl.label}" nykyinen sisältö:\n${proposal.substring(0,1000)}\n\nTee VAIN tarkistuksen ehdottamat muutokset tähän diaan. Jos diaa ei tarvitse muuttaa, vastaa "EI MUUTOKSIA". Näytä muutettu versio kokonaan.`
+              :`Review feedback:\n${reviewMsg.content.substring(0,800)}\n\nSlide "${sl.label}" current content:\n${proposal.substring(0,1000)}\n\nApply ONLY the review suggestions to this slide. If no changes needed, reply "NO CHANGES". Show full updated version.`}],
+            "VAIHE: Korjaukset.\n"+buildContext());
+          if(fixR&&!fixR.match(/EI MUUTOKSIA|NO CHANGES/i)){
+            const cleaned=strip(fixR);
+            lastProposalRef.current[sl.id]=cleaned;
+            const slideData=await convertToJSON(sl.label,sl.layout,cleaned,langRef.current);
+            if(slideData){collectedRef.current={...collectedRef.current,[sl.id]:slideData};}
+            addMsg("assistant","✓ "+sl.label+" "+(fi?"päivitetty":"updated"));
+          }
+        }
+        addMsg("assistant",fi?"Korjaukset tehty!":"Fixes applied!");
+      }else{
+        addMsg("assistant",fi?"Tarkistusta ei löytynyt. Aja ensin \"valmis\"-tarkistus.":"No review found.");
+      }
+      showReview(slidesRef.current);return;}
     // DONE
     if(["valmis","generoi","lataa","done","generate","download","finish"].some(w=>lower.includes(w))){doDownload();return;}
-    addMsg("assistant",fi?"Komennot: \"muokkaa dia X\", \"poista dia X\", \"lisää dia\" tai \"valmis\".":"Commands: \"edit slide X\", \"remove slide X\", \"add slide\" or \"done\".");
+    addMsg("assistant",fi?"Komennot: \"muokkaa dia X\", \"poista dia X\", \"lisää dia\", \"korjaa ehdotukset\" tai \"valmis\".":"Commands: \"edit slide X\", \"remove slide X\", \"add slide\", \"fix suggestions\" or \"done\".");
   }
 
   async function doDownload(){

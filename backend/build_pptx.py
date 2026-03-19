@@ -216,7 +216,10 @@ def build_two_col_slide(prs, d, def_label):
             r2.font.size = Pt(font_size)
             r2.font.color.rgb = C["deepBlue"]
 
-    hide_unused_ph(slide, {0, 17, 10, 18})
+    used = {0}
+    if left_ph and left: used.add(17)
+    if right_ph and right: used.add(18)
+    hide_unused_ph(slide, used)
 
 
 def build_cards_slide(prs, d, def_label):
@@ -315,11 +318,19 @@ def build_table_slide(prs, d, def_label):
 
     n_cols = len(cols)
     n_rows = len(rows) + 1  # +1 header
+    max_rows = 12  # Max rivejä jotka mahtuvat dialle
+    if n_rows > max_rows + 1:
+        rows = rows[:max_rows]
+        n_rows = max_rows + 1
 
     left   = Inches(0.4)
-    top    = Inches(1.3)
+    top    = Inches(2.0)  # Otsikon alapuolelle — EI päälle
     width  = Inches(12.3)
-    height = Inches(0.4 * n_rows)
+    # Dynaaminen rivikorkeus
+    avail_h = 5.2  # 2.0 → 7.2, jätä marginaali
+    row_h = min(0.4, avail_h / n_rows)
+    height = Inches(row_h * n_rows)
+    font_size = 10 if n_rows <= 8 else 8 if n_rows <= 12 else 7
 
     table = slide.shapes.add_table(n_rows, n_cols, left, top, width, height).table
 
@@ -337,7 +348,7 @@ def build_table_slide(prs, d, def_label):
         run = p.add_run()
         run.text = col_name
         run.font.name = FONT
-        run.font.size = Pt(11)
+        run.font.size = Pt(font_size)
         run.font.bold = True
         run.font.color.rgb = C["white"]
 
@@ -352,7 +363,7 @@ def build_table_slide(prs, d, def_label):
             run = p.add_run()
             run.text = str(val or "")
             run.font.name = FONT
-            run.font.size = Pt(11)
+            run.font.size = Pt(font_size)
             run.font.color.rgb = C["deepBlue"]
 
 
