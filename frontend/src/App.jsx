@@ -1100,6 +1100,8 @@ function App() {
       const fileName=(currentPresNameRef.current||"dokumentti").replace(/[^a-zäöåA-ZÄÖÅ0-9\s-]/g,"").trim().replace(/\s+/g,"_")+"."+ext;
       Object.assign(document.createElement("a"),{href:url,download:fileName}).click();URL.revokeObjectURL(url);
       addMsg("assistant",T[langRef.current].downloaded);
+      // Automaattinen tallennus latauksen jälkeen
+      setTimeout(()=>saveProject(),200);
       clearSession(); // Esitys ladattu — tyhjennä tallennettu sessio
     }catch(e){
       const fi=langRef.current==="fi";
@@ -1122,8 +1124,16 @@ function App() {
 
   // ═══ TIEDOSTOT ═══
   async function readFile(f){
-    if(f.name.match(/\.(txt|md|csv|json)$/i)){const t=await f.text().catch(()=>"");return{name:f.name,content:"["+f.name+"]\n"+t.substring(0,5000)};}
-    const mm={pdf:"application/pdf",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png"};const mt=mm[f.name.split(".").pop().toLowerCase()];
+    const ext=f.name.split(".").pop().toLowerCase();
+    // Tekstitiedostot
+    if(["txt","md","csv","json","tsv"].includes(ext)){const t=await f.text().catch(()=>"");return{name:f.name,content:"["+f.name+"]\n"+t.substring(0,8000)};}
+    // Excel → backend-parsinta
+    if(["xlsx","xls"].includes(ext)){
+      try{const buf=await f.arrayBuffer();const bytes=new Uint8Array(buf);let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));
+        const r=await fetch(API+"/api/extract-excel",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({base64:btoa(bin),fileName:f.name})});
+        const d=await r.json();return{name:f.name,content:"["+f.name+(d.text?"]\n"+d.text:": virhe]")};}catch{return{name:f.name,content:"["+f.name+": virhe]"};}}
+    // PDF ja kuvat → Anthropic API
+    const mm={pdf:"application/pdf",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp"};const mt=mm[ext];
     if(mt){try{const buf=await f.arrayBuffer();const bytes=new Uint8Array(buf);let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));
       const r=await fetch(API+"/api/extract-file",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({base64:btoa(bin),mimeType:mt,fileName:f.name})});
       const d=await r.json();return{name:f.name,content:"["+f.name+(d.text?"]\n"+d.text:": virhe]")};}catch{return{name:f.name,content:"["+f.name+": virhe]"};}}

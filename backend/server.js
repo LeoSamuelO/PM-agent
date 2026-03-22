@@ -399,11 +399,66 @@ app.post("/api/extract-file", chatLimiter, async (req, res) => {
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
       : { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } };
     const r = await client.messages.create({
-      model: "claude-sonnet-4-20250514", max_tokens: 2000,
-      messages: [{ role: "user", content: [block, { type: "text", text: "Lue tiedosto (" + fileName + "). Tiivistä oleellinen projektitieto suomeksi." }] }]
+      model: "claude-sonnet-4-20250514", max_tokens: 8000,
+      messages: [{ role: "user", content: [block, { type: "text", text: "Lue tiedosto (" + fileName + ") KOKONAAN, kaikki sivut alusta loppuun. Poimi KAIKKI oleellinen projektitieto: luvut, hinnat, aikataulut, taulukot, tarjoukset, yhteystiedot. ÄLÄ jätä mitään pois. Esitä suomeksi." }] }]
     });
     res.json({ text: r.content.find(b => b.type === "text")?.text || "" });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══ EXCEL-PARSINTA ═══
+app.post("/api/extract-excel", chatLimiter, async (req, res) => {
+  const { base64, fileName } = req.body;
+  if (!base64) return res.status(400).json({ error: "Data puuttuu" });
+  const MAX_BASE64_SIZE = 14 * 1024 * 1024;
+  if (base64.length > MAX_BASE64_SIZE) return res.status(413).json({ error: "Tiedosto liian suuri (max 10MB)" });
+
+  const tmpPath = path.join(__dirname, "tmp_excel_" + Date.now() + ".xlsx");
+  try {
+    // Tallenna base64 → tiedosto
+    fs.writeFileSync(tmpPath, Buffer.from(base64, "base64"));
+
+    // Parsitaan Pythonilla
+    const pythonCmd = await findPython();
+    if (!pythonCmd) throw new Error("Python not found");
+
+    const text = await new Promise((resolve, reject) => {
+      const proc = spawn(pythonCmd, ["-c", `
+import sys, json
+try:
+    import openpyxl
+    wb = openpyxl.load_workbook("${tmpPath.replace(/\\/g, "/")}", data_only=True)
+    result = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        result.append(f"=== {sheet_name} ===")
+        for row in ws.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            if any(c.strip() for c in cells):
+                result.append(" | ".join(cells))
+    print("\\n".join(result[:500]))
+except Exception as e:
+    print(f"ERROR: {e}", file=sys.stderr)
+    sys.exit(1)
+`], { timeout: 15000 });
+
+      let stdout = "", stderr = "";
+      proc.stdout.on("data", d => stdout += d);
+      proc.stderr.on("data", d => stderr += d);
+      proc.on("close", code => {
+        if (code === 0) resolve(stdout.trim());
+        else reject(new Error(stderr || "Excel parsing failed"));
+      });
+      proc.on("error", reject);
+    });
+
+    res.json({ text: text.substring(0, 8000) });
+  } catch (err) {
+    console.error("Excel parse error:", err.message);
+    res.status(500).json({ error: "Excel-tiedoston lukeminen epäonnistui: " + err.message });
+  } finally {
+    fs.unlink(tmpPath, () => {});
+  }
 });
 
 app.post("/api/chat", chatLimiter, async (req, res) => {
