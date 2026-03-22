@@ -391,6 +391,9 @@ export default function App() {
   // Output type: "pptx" or "docx"
   const [outputType,setOutputType]=useState("pptx");
   const outputTypeRef=useRef("pptx");
+  const [editingProjectName,setEditingProjectName]=useState(false);
+  const [editProjNameVal,setEditProjNameVal]=useState("");
+  const [newPresType,setNewPresType]=useState("pptx");
 
   const bottom=useRef();const fileInput=useRef();
   const collectedRef=useRef({});const proposingRef=useRef(false);
@@ -1518,9 +1521,6 @@ export default function App() {
   }
 
   // ═══ PROJEKTI-SIVU ═══
-  const [editingProjectName,setEditingProjectName]=useState(false);
-  const [editProjNameVal,setEditProjNameVal]=useState("");
-  const [newPresType,setNewPresType]=useState("pptx");
   async function renameProject(newName){
     if(!newName.trim()||!currentProjectId)return;
     try{await fetch(API+"/api/projects/"+currentProjectId,{method:"PUT",headers:authHeaders(),body:JSON.stringify({name:newName.trim()})});
