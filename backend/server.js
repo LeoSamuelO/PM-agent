@@ -432,16 +432,12 @@ app.post("/api/build-pptx", async (req, res) => {
 
 // ═══ WORD (DOCX) BUILD ═══
 app.post("/api/build-docx", async (req, res) => {
-  const { slideData, slideStructure, lang } = req.body;
-  if (!slideData || !slideStructure?.length) return res.status(400).json({ error: "Data puuttuu" });
+  const { documentText, chapters, lang } = req.body;
+  if (!documentText) return res.status(400).json({ error: "Dokumenttiteksti puuttuu" });
 
-  for (const sd of slideStructure) {
-    if (!slideData[sd.id]) slideData[sd.id] = getDefaultDocx(sd);
-  }
-
-  const titleChapter = slideStructure.find(s => s.layout === "title");
-  const titleData = titleChapter ? slideData[titleChapter.id] : {};
-  const projectName = (titleData.title || "document")
+  // Ota tiedostonimi ensimmäisestä luvusta tai oletusnimi
+  const titleChapter = chapters?.find(s => s.layout === "title");
+  const projectName = (titleChapter?.label || "dokumentti")
     .replace(/[^a-zäöåA-ZÄÖÅ0-9\s-]/g, "").trim().replace(/\s+/g, "_").substring(0, 50);
   const fileName = projectName + ".docx";
 
@@ -455,7 +451,7 @@ app.post("/api/build-docx", async (req, res) => {
       const pythonCmd = await findPython();
       if (pythonCmd) {
         console.log("🐍 Python (docx):", pythonCmd);
-        await runPythonDocx(pythonCmd, script, JSON.stringify({ slideData, slideStructure, lang: lang || "fi" }), outPath);
+        await runPythonDocx(pythonCmd, script, JSON.stringify({ documentText, chapters: chapters || [], lang: lang || "fi" }), outPath);
 
         if (fs.existsSync(outPath)) {
           console.log("✅ Gofore DOCX OK");

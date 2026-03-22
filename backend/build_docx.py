@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Word-dokumentin generointi Gofore-brändillä.
+Vastaanottaa markdown-muotoisen dokumenttitekstin ja luo tyylitellyn .docx-tiedoston.
 Käyttö: python build_docx.py --stdin output.docx
         python build_docx.py --file input.json output.docx
 """
@@ -11,7 +12,6 @@ from docx import Document
 from docx.shared import Pt, Inches, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.section import WD_ORIENT
 from docx.oxml.ns import qn
 
 # ═══ GOFORE VÄRIT ═══
@@ -21,7 +21,6 @@ ORANGE = RGBColor(0xE8, 0x52, 0x1A)
 MINT = RGBColor(0x3B, 0xBF, 0xAD)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 GREY = RGBColor(0x8C, 0x9B, 0xAA)
-SILVER = RGBColor(0xD3, 0xD9, 0xDF)
 LIGHT = RGBColor(0xEE, 0xF1, 0xF3)
 
 
@@ -37,10 +36,9 @@ def set_cell_shading(cell, color_hex):
 
 
 def create_docx(data, out_path):
-    """Luo Word-dokumentti annetusta datasta."""
-    sections = data.get("sections", {})
-    structure = data.get("structure", [])
-    proposals = data.get("proposals", {})
+    """Luo Word-dokumentti markdown-tekstistä."""
+    document_text = data.get("documentText", "")
+    chapters = data.get("chapters", [])
     lang = data.get("lang", "fi")
 
     doc = Document()
@@ -70,163 +68,15 @@ def create_docx(data, out_path):
     section.left_margin = Cm(2.5)
     section.right_margin = Cm(2.5)
 
-    # ═══ SISÄLLÖNTUOTANTO ═══
-    for idx, s in enumerate(structure):
-        sid = s.get("id", "")
-        layout = s.get("layout", "text")
-        label = s.get("label", f"Luku {idx + 1}")
-        section_data = sections.get(sid, {})
-        proposal_text = proposals.get(sid, "")
+    # ═══ KANSILEHTI ═══
+    add_cover_page(doc, document_text, chapters)
 
-        if layout == "title":
-            # ── KANSILEHTI ──
-            # Oranssi yläviiva
-            p = doc.add_paragraph()
-            run = p.add_run("━" * 60)
-            run.font.color.rgb = ORANGE
-            run.font.size = Pt(6)
-
-            # Tyhjä tila
-            for _ in range(4):
-                doc.add_paragraph()
-
-            # Otsikko
-            title = section_data.get("title", label)
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            run = p.add_run(title)
-            run.font.size = Pt(28)
-            run.font.bold = True
-            run.font.color.rgb = DEEP_BLUE
-
-            # Tagline
-            tagline = section_data.get("tagline", "")
-            if tagline:
-                p = doc.add_paragraph()
-                run = p.add_run(tagline)
-                run.font.size = Pt(14)
-                run.font.color.rgb = ORANGE
-
-            # Meta
-            meta = section_data.get("meta", "")
-            if meta:
-                doc.add_paragraph()
-                p = doc.add_paragraph()
-                run = p.add_run(meta)
-                run.font.size = Pt(11)
-                run.font.color.rgb = GREY
-
-            # Gofore logo-teksti
-            for _ in range(6):
-                doc.add_paragraph()
-            p = doc.add_paragraph()
-            run = p.add_run("GOFORE")
-            run.font.size = Pt(11)
-            run.font.bold = True
-            run.font.color.rgb = ORANGE
-            run.font.letter_spacing = Pt(3)
-
-            # Sivunvaihto
-            doc.add_page_break()
-
-        elif layout == "table":
-            # ── TAULUKKO-LUKU ──
-            doc.add_heading(label, level=1)
-
-            # Lisää teksti proposalista tai section_datasta
-            text_content = extract_text_from_proposal(proposal_text)
-            if text_content:
-                for para_text in text_content[:3]:  # Max 3 johtavaa kappaletta
-                    if not para_text.strip().startswith("|"):
-                        p = doc.add_paragraph(para_text.strip())
-                        p.paragraph_format.space_after = Pt(6)
-
-            # Etsi ja luo taulukko
-            table_data = extract_table_from_proposal(proposal_text)
-            if table_data and len(table_data) > 1:
-                add_styled_table(doc, table_data)
-            elif section_data.get("columns") and section_data.get("rows"):
-                cols = section_data["columns"]
-                rows = section_data["rows"]
-                table_data = [cols] + rows
-                add_styled_table(doc, table_data)
-
-            # Lopputeksti
-            end_text = extract_conclusion(proposal_text)
-            if end_text:
-                doc.add_paragraph()
-                p = doc.add_paragraph(end_text)
-                run = p.runs[0] if p.runs else None
-                if run:
-                    run.font.italic = True
-                    run.font.color.rgb = DIGITAL_BLUE
-
-        elif layout == "list":
-            # ── LISTA-LUKU ──
-            doc.add_heading(label, level=1)
-
-            items = extract_list_from_proposal(proposal_text)
-            # Johdanto ennen listaa
-            intro = extract_intro_paragraph(proposal_text)
-            if intro:
-                p = doc.add_paragraph(intro)
-                p.paragraph_format.space_after = Pt(8)
-
-            for item in items:
-                p = doc.add_paragraph(item, style='List Bullet')
-                p.paragraph_format.space_after = Pt(4)
-
-            # Yhteenveto listan jälkeen
-            summary = extract_conclusion(proposal_text)
-            if summary:
-                doc.add_paragraph()
-                p = doc.add_paragraph(summary)
-
-        elif layout == "summary":
-            # ── TIIVISTELMÄ-LUKU ──
-            doc.add_heading(label, level=1)
-
-            # Oranssi viiva
-            p = doc.add_paragraph()
-            run = p.add_run("━" * 40)
-            run.font.color.rgb = ORANGE
-            run.font.size = Pt(6)
-
-            # Sisältö proposalista
-            paragraphs = extract_all_paragraphs(proposal_text)
-            for para_text in paragraphs:
-                p = doc.add_paragraph(para_text)
-                p.paragraph_format.space_after = Pt(8)
-
-        else:
-            # ── TEXT / MUU — yksityiskohtainen tekstiluku ──
-            doc.add_heading(label, level=1)
-
-            paragraphs = extract_all_paragraphs(proposal_text)
-            if paragraphs:
-                for para_text in paragraphs:
-                    # Tarkista onko tämä alaotsikko
-                    if para_text.startswith("##") or para_text.startswith("**") and para_text.endswith("**"):
-                        heading_text = para_text.strip("#* ")
-                        doc.add_heading(heading_text, level=2)
-                    elif para_text.strip().startswith("|"):
-                        # Taulukko proposalissa
-                        table_data = parse_markdown_table_from_text(para_text)
-                        if table_data:
-                            add_styled_table(doc, table_data)
-                    elif para_text.strip().startswith("- ") or para_text.strip().startswith("• "):
-                        # Bullet-lista
-                        items = [line.strip("- •").strip() for line in para_text.split("\n") if line.strip()]
-                        for item in items:
-                            doc.add_paragraph(item, style='List Bullet')
-                    else:
-                        p = doc.add_paragraph(para_text)
-                        p.paragraph_format.space_after = Pt(8)
-            elif section_data.get("bullets"):
-                for bullet in section_data["bullets"]:
-                    if bullet and bullet != "—":
-                        p = doc.add_paragraph(bullet)
-                        p.paragraph_format.space_after = Pt(6)
+    # ═══ SISÄLTÖ ═══
+    if document_text:
+        parse_markdown_to_docx(doc, document_text)
+    else:
+        # Fallback: ei tekstiä
+        doc.add_paragraph("Dokumentti on tyhjä." if lang == "fi" else "Document is empty.")
 
     # ═══ LOPPUSIVU ═══
     doc.add_page_break()
@@ -250,6 +100,234 @@ def create_docx(data, out_path):
     # Tallenna
     doc.save(out_path)
     print(f"OK: {out_path}")
+
+
+def add_cover_page(doc, text, chapters):
+    """Luo kansilehti dokumentin ensimmäisestä otsikosta tai chapters-datasta."""
+    # Etsi otsikko tekstistä (ensimmäinen # -rivi)
+    title = ""
+    subtitle = ""
+    first_h1 = re.search(r'^#\s+(.+)', text, re.MULTILINE)
+    if first_h1:
+        title = first_h1.group(1).strip()
+    elif chapters:
+        title_ch = next((c for c in chapters if c.get("layout") == "title"), None)
+        title = title_ch.get("label", "Dokumentti") if title_ch else "Dokumentti"
+
+    # Etsi alaotsikko (teksti heti otsikon jälkeen, ennen seuraavaa otsikkoa)
+    if first_h1:
+        after_title = text[first_h1.end():].strip()
+        lines = after_title.split("\n")
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                subtitle = stripped
+                break
+
+    # Oranssi yläviiva
+    p = doc.add_paragraph()
+    run = p.add_run("━" * 60)
+    run.font.color.rgb = ORANGE
+    run.font.size = Pt(6)
+
+    for _ in range(4):
+        doc.add_paragraph()
+
+    # Otsikko
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run = p.add_run(title or "Dokumentti")
+    run.font.size = Pt(28)
+    run.font.bold = True
+    run.font.color.rgb = DEEP_BLUE
+
+    # Alaotsikko
+    if subtitle:
+        p = doc.add_paragraph()
+        run = p.add_run(subtitle)
+        run.font.size = Pt(14)
+        run.font.color.rgb = ORANGE
+
+    # Gofore
+    for _ in range(6):
+        doc.add_paragraph()
+    p = doc.add_paragraph()
+    run = p.add_run("GOFORE")
+    run.font.size = Pt(11)
+    run.font.bold = True
+    run.font.color.rgb = ORANGE
+    run.font.letter_spacing = Pt(3)
+
+    doc.add_page_break()
+
+
+def parse_markdown_to_docx(doc, text):
+    """Parsii markdown-tekstin ja lisää sen Word-dokumenttiin."""
+    lines = text.split("\n")
+    i = 0
+    # Ohita ensimmäinen # -otsikko ja sitä seuraava alaotsikkorivi (kansilehti hoiti ne)
+    first_h1_skipped = False
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Tyhjä rivi
+        if not stripped:
+            i += 1
+            continue
+
+        # H1 otsikko: # Otsikko
+        if re.match(r'^#\s+', stripped):
+            heading_text = re.sub(r'^#\s+', '', stripped).strip()
+            # Ohita ensimmäinen H1 (kansilehti)
+            if not first_h1_skipped:
+                first_h1_skipped = True
+                i += 1
+                # Ohita myös seuraava ei-tyhjä rivi jos se on alaotsikko (ei # eikä -)
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                if i < len(lines) and lines[i].strip() and not lines[i].strip().startswith("#"):
+                    i += 1  # skip subtitle line
+                continue
+
+            heading_text = clean_markdown(heading_text)
+            doc.add_heading(heading_text, level=1)
+            i += 1
+            continue
+
+        # H2 otsikko: ## Otsikko
+        if re.match(r'^##\s+', stripped):
+            heading_text = re.sub(r'^##\s+', '', stripped).strip()
+            heading_text = clean_markdown(heading_text)
+            doc.add_heading(heading_text, level=2)
+            i += 1
+            continue
+
+        # H3 otsikko: ### Otsikko
+        if re.match(r'^###\s+', stripped):
+            heading_text = re.sub(r'^###\s+', '', stripped).strip()
+            heading_text = clean_markdown(heading_text)
+            doc.add_heading(heading_text, level=3)
+            i += 1
+            continue
+
+        # Taulukko: | sarake1 | sarake2 |
+        if stripped.startswith("|"):
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table_lines.append(lines[i].strip())
+                i += 1
+            table_data = parse_table_lines(table_lines)
+            if table_data and len(table_data) >= 2:
+                add_styled_table(doc, table_data)
+            continue
+
+        # Bullet-lista: - item tai • item tai * item
+        if re.match(r'^[-•*]\s+', stripped):
+            while i < len(lines):
+                l = lines[i].strip()
+                if re.match(r'^[-•*]\s+', l):
+                    item_text = re.sub(r'^[-•*]\s+', '', l).strip()
+                    item_text = clean_markdown(item_text)
+                    p = doc.add_paragraph(item_text, style='List Bullet')
+                    p.paragraph_format.space_after = Pt(4)
+                    i += 1
+                elif not l:
+                    i += 1
+                    break
+                else:
+                    break
+            continue
+
+        # Numeroidut listat: 1. item
+        if re.match(r'^\d+\.\s+', stripped):
+            while i < len(lines):
+                l = lines[i].strip()
+                if re.match(r'^\d+\.\s+', l):
+                    item_text = re.sub(r'^\d+\.\s+', '', l).strip()
+                    item_text = clean_markdown(item_text)
+                    p = doc.add_paragraph(item_text, style='List Number')
+                    p.paragraph_format.space_after = Pt(4)
+                    i += 1
+                elif not l:
+                    i += 1
+                    break
+                else:
+                    break
+            continue
+
+        # Horisontaalinen viiva: --- tai ***
+        if re.match(r'^[-*_]{3,}$', stripped):
+            p = doc.add_paragraph()
+            run = p.add_run("━" * 40)
+            run.font.color.rgb = ORANGE
+            run.font.size = Pt(6)
+            i += 1
+            continue
+
+        # Normaali kappale — kerää rivit kunnes tyhjä rivi tai uusi elementti
+        para_lines = []
+        while i < len(lines):
+            l = lines[i].strip()
+            if not l:
+                i += 1
+                break
+            if l.startswith("#") or l.startswith("|") or re.match(r'^[-•*]\s+', l) or re.match(r'^\d+\.\s+', l) or re.match(r'^[-*_]{3,}$', l):
+                break
+            para_lines.append(l)
+            i += 1
+
+        if para_lines:
+            para_text = " ".join(para_lines)
+            add_rich_paragraph(doc, para_text)
+
+
+def clean_markdown(text):
+    """Poista markdown-muotoilu tekstistä."""
+    # Poista bold
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    # Poista italic
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # Poista linkit
+    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+    # Poista kooditagi
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    return text.strip()
+
+
+def add_rich_paragraph(doc, text):
+    """Lisää kappale jossa bold-teksti on lihavoitu."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(8)
+
+    # Pilko bold-osiin: **teksti** → lihavoitu
+    parts = re.split(r'(\*\*[^*]+\*\*)', text)
+    for part in parts:
+        if part.startswith("**") and part.endswith("**"):
+            run = p.add_run(part[2:-2])
+            run.bold = True
+            run.font.color.rgb = DEEP_BLUE
+        else:
+            # Poista jäljellä olevat markdown-merkinnät
+            cleaned = clean_markdown(part)
+            if cleaned:
+                run = p.add_run(cleaned)
+                run.font.color.rgb = DEEP_BLUE
+
+
+def parse_table_lines(lines):
+    """Parsii markdown-taulukkorivit dataksi."""
+    # Poista separator-rivit (---|---)
+    data_lines = [l for l in lines if not re.match(r'^\|[\s\-:|]+\|$', l)]
+    if len(data_lines) < 2:
+        return None
+    result = []
+    for line in data_lines:
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = [clean_markdown(c) for c in cells]
+        result.append(cells)
+    return result
 
 
 def add_styled_table(doc, table_data):
@@ -285,158 +363,6 @@ def add_styled_table(doc, table_data):
                     run.font.color.rgb = DEEP_BLUE
 
     doc.add_paragraph()
-
-
-def extract_text_from_proposal(text):
-    """Erottelee tekstikappaleet proposalista."""
-    if not text:
-        return []
-    lines = text.split("\n")
-    paragraphs = []
-    current = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if current:
-                paragraphs.append(" ".join(current))
-                current = []
-        elif stripped.startswith("|"):
-            if current:
-                paragraphs.append(" ".join(current))
-                current = []
-        else:
-            current.append(stripped)
-    if current:
-        paragraphs.append(" ".join(current))
-    return paragraphs
-
-
-def extract_all_paragraphs(text):
-    """Erottelee kaikki kappaleet proposalista, säilyttäen rakenteet."""
-    if not text:
-        return []
-    # Poista markdown-muotoilu mutta säilytä rakenne
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    lines = text.split("\n")
-    paragraphs = []
-    current = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if current:
-                paragraphs.append("\n".join(current))
-                current = []
-        elif stripped.startswith("##"):
-            if current:
-                paragraphs.append("\n".join(current))
-                current = []
-            paragraphs.append(stripped)
-        elif stripped.startswith("|"):
-            if current:
-                paragraphs.append("\n".join(current))
-                current = []
-            # Kerää koko taulukko
-            table_lines = [stripped]
-            # (taulukko jatkuu seuraavilla riveillä — käsitellään myöhemmin)
-            paragraphs.append(stripped)
-        elif stripped.startswith("- ") or stripped.startswith("• ") or stripped.startswith("* "):
-            current.append(stripped)
-        else:
-            # Poista ylimääräiset markdown-tagit
-            cleaned = re.sub(r'^#+\s*', '', stripped)
-            cleaned = re.sub(r'\[.*?\]\(.*?\)', '', cleaned)
-            current.append(cleaned)
-    if current:
-        paragraphs.append("\n".join(current))
-    return [p for p in paragraphs if p.strip()]
-
-
-def extract_table_from_proposal(text):
-    """Etsii markdown-taulukon proposalista."""
-    if not text:
-        return None
-    lines = text.split("\n")
-    table_lines = [l.strip() for l in lines if l.strip().startswith("|") and "|" in l[1:]]
-    # Poista separator-rivit (---|---)
-    table_lines = [l for l in table_lines if not re.match(r'^\|[\s\-:|]+\|$', l)]
-    if len(table_lines) < 2:
-        return None
-    result = []
-    for line in table_lines:
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        result.append(cells)
-    return result
-
-
-def parse_markdown_table_from_text(text):
-    """Parsii taulukko-tekstin."""
-    lines = text.strip().split("\n")
-    table_lines = [l.strip() for l in lines if l.strip().startswith("|")]
-    table_lines = [l for l in table_lines if not re.match(r'^\|[\s\-:|]+\|$', l)]
-    if len(table_lines) < 2:
-        return None
-    return [[c.strip() for c in l.strip("|").split("|")] for l in table_lines]
-
-
-def extract_intro_paragraph(text):
-    """Etsii ensimmäisen kappaleen ennen listaa."""
-    if not text:
-        return ""
-    lines = text.split("\n")
-    intro = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("-") or stripped.startswith("•") or stripped.startswith("*") or stripped.startswith("1."):
-            break
-        if stripped and not stripped.startswith("#") and not stripped.startswith("|"):
-            intro.append(stripped)
-    return " ".join(intro) if intro else ""
-
-
-def extract_list_from_proposal(text):
-    """Etsii listan proposalista."""
-    if not text:
-        return []
-    lines = text.split("\n")
-    items = []
-    for line in lines:
-        stripped = line.strip()
-        if re.match(r'^[-•*]\s+', stripped):
-            items.append(re.sub(r'^[-•*]\s+', '', stripped))
-        elif re.match(r'^\d+\.\s+', stripped):
-            items.append(re.sub(r'^\d+\.\s+', '', stripped))
-    return items
-
-
-def extract_conclusion(text):
-    """Etsii johtopäätös/suositus-kappaleen proposalista."""
-    if not text:
-        return ""
-    lines = text.split("\n")
-    # Etsi viimeinen kappale joka ei ole taulukkoa tai listaa
-    paragraphs = []
-    current = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if current:
-                paragraphs.append(" ".join(current))
-                current = []
-        elif not stripped.startswith("|") and not stripped.startswith("-") and not stripped.startswith("•"):
-            current.append(stripped)
-        else:
-            if current:
-                paragraphs.append(" ".join(current))
-                current = []
-    if current:
-        paragraphs.append(" ".join(current))
-
-    # Palauta viimeinen kappale jos se vaikuttaa johtopäätökseltä
-    keywords = ["suosit", "johtopäät", "yhteenveto", "recomm", "conclus", "summary", "therefore", "siksi", "eli"]
-    for p in reversed(paragraphs):
-        if any(kw in p.lower() for kw in keywords):
-            return re.sub(r'\*\*(.+?)\*\*', r'\1', p)
-    return ""
 
 
 if __name__ == "__main__":

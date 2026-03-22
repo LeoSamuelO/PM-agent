@@ -10,7 +10,7 @@ const G = {
 // ═══ KÄÄNNÖKSET ═══
 const T = {
   fi:{
-    title:"Projektisuunnitelma-agentti",subtitle:"Rakennetaan projektisuunnitelmasi yhdessä, dia kerrallaan.",
+    title:"Projektisuunnitelma-agentti",subtitle:"Rakennetaan projektisuunnitelmasi yhdessä.",
     start:"Aloita haastattelu →",login:"Kirjaudu",register:"Rekisteröidy",password:"Salasana",passwordAgain:"Salasana uudelleen",
     username:"Käyttäjänimi",accessKey:"Avain",wrongPw:"Väärä käyttäjänimi tai salasana",wrongKey:"Väärä avain",
     noAccount:"Ei tiliä?",hasAccount:"Onko jo tili?",pwMismatch:"Salasanat eivät täsmää",pwTooShort:"Salasanan on oltava vähintään 6 merkkiä",
@@ -33,20 +33,20 @@ const T = {
     enterPresentationName:"Anna esitykselle nimi",noPresentations:"Ei esityksiä vielä.",openProject:"Avaa",
     sharedContext:"Jaettu konteksti",interviewDone:"Haastattelu tehty",interviewNotDone:"Aloita haastattelusta",
     continuePresentation:"Jatka",deletePresentation:"Poista",
-    steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]],
-    phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Diarakenne",planning:"📄 Vaihe 5 — Dia",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
-    slides:"Diat",redownload:"🚀 Lataa uudelleen",
-    placeholder:{review:"'valmis', 'muokkaa dia X', 'poista dia X' tai 'lisää dia'...",interview:"Kerro projektistasi...",default:"Kommentoi tai hyväksy..."},
-    greeting:"Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi — mitä tehdään, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet. Voit liittää dokumentteja 📎-napista.\n\n5 vaihetta:\n1️⃣ Projektitiedot  2️⃣ Fokus  3️⃣ Havainnot  4️⃣ Rakenne  5️⃣ Diat",
+    steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Sisältö","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis","Gofore-teemainen dokumentti"]],
+    phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Rakenne",planning:"📄 Vaihe 5 — Sisältö",deepdive:"🔍 Vaihe 5 — Tarkennukset",writing:"✍️ Vaihe 6 — Dokumentin kirjoitus",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
+    slides:"Osat",chapters:"Luvut",redownload:"🚀 Lataa uudelleen",
+    placeholder:{review:"'valmis', 'muokkaa diaa/lukua X', 'poista X' tai 'lisää'...",interview:"Kerro projektistasi...",writing:"Kommentoi tai kirjoita 'valmis'...",default:"Kommentoi tai hyväksy..."},
+    greeting:"Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi — mitä tehdään, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet. Voit liittää dokumentteja 📎-napista.\n\n5 vaihetta:\n1️⃣ Projektitiedot  2️⃣ Fokus  3️⃣ Havainnot  4️⃣ Rakenne  5️⃣ Sisältö",
     materialThanks:"Kiitos materiaalista! Siirrytään valitsemaan esityksen tarkoitus.",
-    structureConfirmed:"Rakenne vahvistettu! Aloitetaan diojen sisällöntuotanto.",
+    structureConfirmed:"Rakenne vahvistettu! Aloitetaan sisällöntuotanto.",
     saving:"💾 Tallennetaan...",saved:"tallennettu.",updated:"päivitetty!",noChanges:"— ei muutoksia.",
-    generating:"Generoidaan PowerPoint...",downloaded:"✅ PowerPoint ladattu!",
-    moveToStructure:"Hienoa! Siirrytään rakentamaan diarakenne.",
-    editAsk:"Mitä haluat muuttaa diassa",editCancel:"Kirjoita muutokset tai \"en mitään\" palataksesi.",
+    generating:"Generoidaan...",downloaded:"✅ Ladattu!",
+    moveToStructure:"Hienoa! Siirrytään rakentamaan rakenne.",
+    editAsk:"Mitä haluat muuttaa",editCancel:"Kirjoita muutokset tai \"en mitään\" palataksesi.",
   },
   en:{
-    title:"Project Plan Agent",subtitle:"Let's build your project presentation together, slide by slide.",
+    title:"Project Plan Agent",subtitle:"Let's build your project plan together.",
     start:"Start interview →",login:"Log in",register:"Register",password:"Password",passwordAgain:"Password again",
     username:"Username",accessKey:"Access key",wrongPw:"Wrong username or password",wrongKey:"Wrong access key",
     noAccount:"No account?",hasAccount:"Already have an account?",pwMismatch:"Passwords don't match",pwTooShort:"Password must be at least 6 characters",
@@ -69,17 +69,17 @@ const T = {
     enterPresentationName:"Name your presentation",noPresentations:"No presentations yet.",openProject:"Open",
     sharedContext:"Shared context",interviewDone:"Interview completed",interviewNotDone:"Start from interview",
     continuePresentation:"Continue",deletePresentation:"Delete",
-    steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Slide by slide","I propose, you confirm"],["📊","Ready PPTX","Gofore-themed presentation"]],
-    phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Slide",review:"👀 Final review",ready:"✅ Done"},
-    slides:"Slides",redownload:"🚀 Download again",
-    placeholder:{review:"'done', 'edit slide X', 'remove slide X' or 'add slide'...",interview:"Tell about your project...",default:"Comment or approve..."},
-    greeting:"Hi! I'm Gofore's project plan agent.\n\nTell me about your project — what, when, with whom, and key challenges. Attach documents with 📎.\n\n5 phases:\n1️⃣ Project info  2️⃣ Focus  3️⃣ Insights  4️⃣ Structure  5️⃣ Slides",
+    steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Content","I propose, you confirm"],["📊","Ready","Gofore-themed document"]],
+    phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Content",deepdive:"🔍 Phase 5 — Deep dive",writing:"✍️ Phase 6 — Document writing",review:"👀 Final review",ready:"✅ Done"},
+    slides:"Parts",chapters:"Chapters",redownload:"🚀 Download again",
+    placeholder:{review:"'done', 'edit slide/chapter X', 'remove X' or 'add'...",interview:"Tell about your project...",writing:"Comment or type 'done'...",default:"Comment or approve..."},
+    greeting:"Hi! I'm Gofore's project plan agent.\n\nTell me about your project — what, when, with whom, and key challenges. Attach documents with 📎.\n\n5 phases:\n1️⃣ Project info  2️⃣ Focus  3️⃣ Insights  4️⃣ Structure  5️⃣ Content",
     materialThanks:"Thanks for the material! Let's choose the presentation focus.",
-    structureConfirmed:"Structure confirmed! Starting slide content.",
+    structureConfirmed:"Structure confirmed! Starting content creation.",
     saving:"💾 Saving...",saved:"saved.",updated:"updated!",noChanges:"— no changes.",
-    generating:"Generating PowerPoint...",downloaded:"✅ PowerPoint downloaded!",
-    moveToStructure:"Great! Let's build the slide structure.",
-    editAsk:"What do you want to change in slide",editCancel:"Type changes or \"nothing\" to go back.",
+    generating:"Generating...",downloaded:"✅ Downloaded!",
+    moveToStructure:"Great! Let's build the structure.",
+    editAsk:"What do you want to change in",editCancel:"Type changes or \"nothing\" to go back.",
   }
 };
 
@@ -501,9 +501,9 @@ export default function App() {
     const doneCount=Object.values(s.statuses||{}).filter(v=>v==="done").length;
     setMsgs([
       {type:"divider",content:fi?"🔄 Sessio palautettu":"🔄 Session recovered"},
-      {role:"assistant",content:(fi?`Palautin edellisen session (${doneCount}/${s.slides.length} diaa valmiina):\n\n${list}\n\n`:`Recovered previous session (${doneCount}/${s.slides.length} slides done):\n\n${list}\n\n`)
-        +(doneCount<s.slides.length?(fi?"Jatketaan siitä mihin jäätiin. Kirjoita 'valmis' ladataksesi tai muokkaa dioja.":"Let's continue where we left off. Type 'done' to download or edit slides.")
-        :(fi?"Kaikki diat valmiina! Kirjoita 'valmis' ladataksesi.":"All slides done! Type 'done' to download."))},
+      {role:"assistant",content:(fi?`Palautin edellisen session (${doneCount}/${s.slides.length} osaa valmiina):\n\n${list}\n\n`:`Recovered previous session (${doneCount}/${s.slides.length} parts done):\n\n${list}\n\n`)
+        +(doneCount<s.slides.length?(fi?"Jatketaan siitä mihin jäätiin. Kirjoita 'valmis' ladataksesi.":"Let's continue where we left off. Type 'done' to download.")
+        :(fi?"Kaikki valmiina! Kirjoita 'valmis' ladataksesi.":"All done! Type 'done' to download."))},
     ]);
     setScreenSync("review");
   }
@@ -678,11 +678,15 @@ export default function App() {
     }
 
     // Mikä tahansa muu — vaihtoehdon valinta, vapaa muutos, "kattavampi", "B", jne.
-    // → Pyydä AI näyttämään LOPULLINEN rakenne puhtaana listana
+    const isDocx=outputTypeRef.current==="docx";
     const modifyPrompt=fi
-      ?`Käyttäjän valinta/muutos: "${userText}"\n\nNäytä LOPULLINEN diarakenne yhtenä numeroiduna listana. VAIN YKSI lista. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout\n\nLayoutit: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart, kpi\nKäytä monipuolisesti: KPI avainluvuille, BAR_CHART budjeteille, PIE_CHART jakaumille, CARDS riskeille, GANTT aikatauluille. Iso aihe → jaa 2-3 diaan. Käyttäjä voi pyytää tiettyä diamäärää.`
-      :`User choice/modification: "${userText}"\n\nShow FINAL slide structure as ONE numbered list. Cover always 1. Each row: number + emoji + name - layout\n\nLayouts: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart, kpi\nUse variety: KPI for key numbers, BAR_CHART for budgets, PIE_CHART for distributions, CARDS for risks, GANTT for timelines. Big topics → split into 2-3 slides. User can request specific slide count.`;
-    const r=await api([...recentMessages(3),{role:"user",content:modifyPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
+      ?(isDocx
+        ?`Käyttäjän valinta/muutos: "${userText}"\n\nNäytä LOPULLINEN lukurakenne yhtenä numeroiduna listana. VAIN YKSI lista. Kansilehti AINA 1. Jokainen rivi: numero + emoji + nimi - tyyppi\n\nTyypit: title, text, table, list, summary\nKäyttäjä voi pyytää tiettyä lukumäärää.`
+        :`Käyttäjän valinta/muutos: "${userText}"\n\nNäytä LOPULLINEN diarakenne yhtenä numeroiduna listana. VAIN YKSI lista. Kansi AINA 1. Jokainen rivi: numero + emoji + nimi - layout\n\nLayoutit: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart, kpi\nKäytä monipuolisesti. Iso aihe → jaa 2-3 diaan.`)
+      :(isDocx
+        ?`User choice/modification: "${userText}"\n\nShow FINAL chapter structure as ONE numbered list. Cover always 1. Each row: number + emoji + name - type\n\nTypes: title, text, table, list, summary`
+        :`User choice/modification: "${userText}"\n\nShow FINAL slide structure as ONE numbered list. Cover always 1. Each row: number + emoji + name - layout\n\nLayouts: title, bullets, table, gantt, cards, two-col, bar_chart, pie_chart, line_chart, kpi\nUse variety. Big topics → split into 2-3 slides.`);
+    const r=await api([...recentMessages(3),{role:"user",content:modifyPrompt}],(isDocx?"VAIHE: Dokumentin rakenne.\n":"VAIHE: Diarakenne.\n")+buildContext());
     const parsed=tryParseStructure(strip(r));
     if(parsed&&parsed.length>0){
       pendingStructRef.current=parsed;
@@ -699,10 +703,80 @@ export default function App() {
   function startPlanning(confirmed){
     setSlides(confirmed);slidesRef.current=confirmed;
     setStatuses(Object.fromEntries(confirmed.map(s=>[s.id,"pending"])));
-    setScreenSync("planning");setSlideIdxSync(0);
-    addDivider(outputTypeRef.current==="docx"?"📄 Vaihe 5 — Lukujen sisällöntuotanto":"📄 Vaihe 5 — Diojen sisällöntuotanto");
-    setTimeout(saveSession,50); // Tallenna rakenne heti
-    setTimeout(()=>proposeSlide(0,confirmed),100);
+    const isDocx=outputTypeRef.current==="docx";
+    if(isDocx){
+      // Word: siirry syvennysvaiheeseen — ei luku kerrallaan
+      startDeepDive(confirmed);
+    }else{
+      // PPTX: dia kerrallaan kuten ennenkin
+      setScreenSync("planning");setSlideIdxSync(0);
+      addDivider("📄 Vaihe 5 — Sisällöntuotanto");
+      setTimeout(saveSession,50);
+      setTimeout(()=>proposeSlide(0,confirmed),100);
+    }
+  }
+
+  // ═══ WORD: SYVENNYSVAIHE ═══
+  async function startDeepDive(confirmed){
+    const fi=langRef.current==="fi";
+    setScreenSync("deepdive");
+    addDivider(fi?"🔍 Vaihe 5 — Tarkennukset":"🔍 Phase 5 — Deep dive");
+    const chapterList=confirmed.map((ch,i)=>`${i+1}. ${ch.icon} ${ch.label} (${ch.layout})`).join("\n");
+    const prompt=fi
+      ?`Dokumentin rakenne on:\n${chapterList}\n\nEnnen kirjoittamista, kysy 3 KOHDENNETTUA tarkentavaa kysymystä joiden avulla voit kirjoittaa paremman dokumentin. Kysymysten pitää liittyä sisältöön — esim.:\n- Mitä lukuja/datapisteitä korostetaan?\n- Kuka on pääasiallinen lukija?\n- Onko tiettyjä päätöksiä tai suosituksia joita pitää tuoda esiin?\n- Dokumentin sävy: johtotaso-tiivistelmä vai yksityiskohtainen?\n\nKysy kaikki 3 kerralla numeroidusti.`
+      :`Document structure:\n${chapterList}\n\nBefore writing, ask 3 TARGETED clarifying questions to write a better document. Questions should be about content — e.g.:\n- What data points/metrics to emphasize?\n- Who is the primary reader?\n- Any specific decisions or recommendations to highlight?\n- Tone: executive summary or detailed analysis?\n\nAsk all 3 at once, numbered.`;
+    const r=await api([{role:"user",content:prompt}],"VAIHE: Tarkennukset ennen kirjoitusta.\n"+buildContext());
+    addMsg("assistant",strip(r));
+    setTimeout(saveSession,50);
+  }
+
+  // Käsittele syvennysvaiheen vastaus → kirjoita koko dokumentti
+  async function runDeepDiveConfirm(userText){
+    const fi=langRef.current==="fi";
+    // Tallenna vastaukset kontekstiin
+    updateSummary("TARKENNUKSET: "+userText);
+    addMsg("assistant",fi?"Kiitos! Kirjoitan nyt koko dokumentin...":"Thanks! Now writing the full document...");
+    await runDocumentWrite();
+  }
+
+  // ═══ WORD: KOKO DOKUMENTIN KIRJOITUS ═══
+  async function runDocumentWrite(){
+    const fi=langRef.current==="fi";
+    setScreenSync("writing");
+    addDivider(fi?"✍️ Vaihe 6 — Dokumentin kirjoitus":"✍️ Phase 6 — Document writing");
+    const chapterList=slidesRef.current.map((ch,i)=>`${i+1}. ${ch.label} (${ch.layout})`).join("\n");
+    const prompt=fi
+      ?`Kirjoita KOKO dokumentti yhtenä koherenttina tekstinä.\n\nLukurakenne:\n${chapterList}\n\nSÄÄNNÖT:\n- Käytä # -otsikkoja luvuille\n- Jokainen luku: 2-5 yksityiskohtaista kappaletta\n- Analysoi, perustele, tee johtopäätöksiä — älä vain listaa\n- Jos lukuja → laske ja näytä kaavat\n- Ammattimainen, asiantunteva sävy\n- Loogiset siirtymät lukujen välillä\n- Taulukot markdown-muodossa (| sarake1 | sarake2 |)\n- Tämän pitää olla VALMIS, julkaisuvalmis teksti\n\nKirjoita kaikki luvut kerralla. Aloita suoraan sisällöstä.`
+      :`Write the ENTIRE document as one coherent text.\n\nChapter structure:\n${chapterList}\n\nRULES:\n- Use # headers for chapters\n- Each chapter: 2-5 detailed paragraphs\n- Analyze, justify, draw conclusions — don't just list\n- If numbers → calculate and show formulas\n- Professional, expert tone\n- Logical transitions between chapters\n- Tables in markdown (| col1 | col2 |)\n- Must be COMPLETE, publication-ready text\n\nWrite all chapters at once. Start directly with content.`;
+    const r=await api([{role:"user",content:prompt}],"VAIHE: Dokumentin kirjoitus. Kirjoita KOKO dokumentti.\n"+buildContext());
+    const docText=strip(r);
+    lastProposalRef.current["full_document"]=docText;
+    // Merkitse kaikki luvut tehdyiksi
+    setStatuses(prev=>{const n={...prev};slidesRef.current.forEach(s=>{n[s.id]="done";});return n;});
+    addMsg("assistant",docText);
+    addMsg("assistant",fi
+      ?"Dokumentti on valmis! Voit:\n• Kommentoida muutoksia → kirjoitan uudelleen\n• Kirjoittaa **\"valmis\"** → lataan Word-tiedostona"
+      :"Document is ready! You can:\n• Comment changes → I'll rewrite\n• Type **\"done\"** → download as Word file");
+    setTimeout(saveSession,100);
+  }
+
+  // Käsittele dokumentin muokkaus writing-vaiheessa
+  async function runDocumentEdit(userText){
+    const fi=langRef.current==="fi";
+    const currentDoc=lastProposalRef.current["full_document"]||"";
+    if(["valmis","generoi","lataa","done","generate","download","finish"].some(w=>userText.trim().toLowerCase().includes(w))){
+      doDownload();return;
+    }
+    addMsg("assistant",fi?"Muokataan dokumenttia...":"Editing document...");
+    const prompt=fi
+      ?`Dokumentin nykyinen versio:\n---\n${currentDoc}\n---\n\nKäyttäjän muutospyyntö: "${userText}"\n\nTee pyydetyt muutokset ja näytä KOKO päivitetty dokumentti. Säilytä # -otsikot ja markdown-muotoilu.`
+      :`Current document:\n---\n${currentDoc}\n---\n\nUser's change request: "${userText}"\n\nMake the requested changes and show the FULL updated document. Keep # headers and markdown formatting.`;
+    const r=await api([{role:"user",content:prompt}],"VAIHE: Dokumentin muokkaus.\n"+buildContext());
+    const updated=strip(r);
+    lastProposalRef.current["full_document"]=updated;
+    addMsg("assistant",updated);
+    addMsg("assistant",fi?"Muutokset tehty. Kommentoi lisää tai kirjoita \"valmis\" ladataksesi.":"Changes made. Comment more or type \"done\" to download.");
+    setTimeout(saveSession,100);
   }
 
   async function proposeSlide(idx,slidesArr){
@@ -769,7 +843,7 @@ export default function App() {
 
   async function runPlanning(userText){
     // Race condition -suoja: älä käsittele viestiä jos AI vielä generoi ehdotusta
-    if(proposingRef.current){addMsg("assistant",langRef.current==="fi"?"⏳ Odota, diaehdotus generoituu...":"⏳ Wait, slide proposal is being generated...");return;}
+    if(proposingRef.current){addMsg("assistant",langRef.current==="fi"?"⏳ Odota, ehdotus generoituu...":"⏳ Wait, proposal is being generated...");return;}
     const cur=slidesRef.current;const idx=slideIdxRef.current;const slide=cur[idx];
     const cancelWords=["en mitään","ei muutoksia","peruuta","nothing","no changes","cancel","nevermind"];
     const isCancel=editingSlide!==null&&cancelWords.some(w=>userText.trim().toLowerCase().includes(w));
@@ -808,10 +882,9 @@ export default function App() {
       }
       const slideData=await convertToJSON(slide.label,effectiveLayout,verifiedText,langRef.current);
       // Validoi: onko diassa oikeaa sisältöä?
-      const fi=langRef.current==="fi";
       if(!slideData){
-        addMsg("assistant",fi?"⚠️ Dian sisältöä ei voitu muuntaa. Yritä muokata tai hyväksy uudelleen."
-          :"⚠️ Could not convert slide content. Try editing or approving again.");
+        addMsg("assistant",fi?"⚠️ Sisältöä ei voitu muuntaa. Yritä muokata tai hyväksy uudelleen."
+          :"⚠️ Could not convert content. Try editing or approving again.");
         return;
       }
       const isEmpty=(d,layout)=>{
@@ -825,8 +898,8 @@ export default function App() {
         return false;
       };
       if(isEmpty(slideData,effectiveLayout)){
-        addMsg("assistant",fi?"⚠️ Dia vaikuttaa tyhjältä. Voisitko kuvailla mitä sisältöä haluat?"
-          :"⚠️ Slide appears empty. Could you describe what content you want?");
+        addMsg("assistant",fi?"⚠️ Sisältö vaikuttaa tyhjältä. Voisitko kuvailla mitä haluat?"
+          :"⚠️ Content appears empty. Could you describe what you want?");
         return;
       }
       collectedRef.current={...collectedRef.current,[slide.id]:slideData};
@@ -872,17 +945,18 @@ export default function App() {
   async function runConsistencyCheck(slidesArr){
     const cur=slidesArr||slidesRef.current;const fi=langRef.current==="fi";
     addDivider(fi?"🔍 Tarkistus":"🔍 Review");
-    addMsg("assistant",fi?"Tarkistan diojen johdonmukaisuuden...":"Checking slide consistency...");
+    addMsg("assistant",fi?"Tarkistan johdonmukaisuuden...":"Checking consistency...");
     try{
-      // Anna enemmän sisältöä per dia — 800 merkkiä, ei vain 400
+      const isDocx=outputTypeRef.current==="docx";
+      const itemName=fi?(isDocx?"luku":"dia"):(isDocx?"chapter":"slide");
       const slidesSummary=cur.map((s,i)=>{
         const proposal=(lastProposalRef.current[s.id]||"").substring(0,800);
-        return `DIA ${i+1}/${cur.length}: "${s.label}" (${s.layout})\n${proposal}`;
+        return `${itemName.toUpperCase()} ${i+1}/${cur.length}: "${s.label}" (${s.layout})\n${proposal}`;
       }).join("\n\n---\n\n");
 
       const checkPrompt=fi
-        ?`Alla on kaikkien ${cur.length} dian sisällöt.\n\nTarkista VAIN nämä:\n1. LUKURISTIRIIDAT: Esiintyykö SAMA tieto eri luvuilla eri dioilla? (esim. budjetti 420k dialla 3 mutta 450k dialla 5). Listaa VAIN varmat ristiriidat joissa SAMA asia on eri numerolla.\n2. SUOSITUSRISTIRIIDAT: Suositellaanko eri dioilla eri toimittajaa/vaihtoehtoa?\n\nTÄRKEÄÄ:\n- ÄLÄ väitä diojen puuttuvan — kaikki ${cur.length} diaa ovat olemassa\n- ÄLÄ ehdota uusia dioja\n- ÄLÄ keksi ongelmia jotka eivät ole selkeitä\n- Jos et löydä VARMOJA ristiriitoja, sano: "Tarkistus OK — ei ristiriitoja havaittu."\n- Max 3-5 riviä\n\nDIAT:\n${slidesSummary.substring(0,4000)}`
-        :`Below are all ${cur.length} slide contents.\n\nCheck ONLY:\n1. NUMBER CONTRADICTIONS: Does the SAME fact appear with different numbers on different slides?\n2. RECOMMENDATION CONTRADICTIONS: Do different slides recommend different vendors/options?\n\nIMPORTANT:\n- Do NOT claim slides are missing — all ${cur.length} exist\n- Do NOT suggest new slides\n- Do NOT invent problems\n- If no CERTAIN contradictions found, say: "Check OK — no contradictions found."\n- Max 3-5 lines\n\nSLIDES:\n${slidesSummary.substring(0,4000)}`;
+        ?`Alla on kaikkien ${cur.length} ${itemName}n sisällöt.\n\nTarkista VAIN nämä:\n1. LUKURISTIRIIDAT: Esiintyykö SAMA tieto eri luvuilla? Listaa VAIN varmat ristiriidat.\n2. SUOSITUSRISTIRIIDAT: Suositellaanko eri kohdissa eri vaihtoehtoa?\n\nTÄRKEÄÄ:\n- ÄLÄ väitä osien puuttuvan — kaikki ${cur.length} ovat olemassa\n- ÄLÄ ehdota uusia osia\n- ÄLÄ keksi ongelmia\n- Jos ei ristiriitoja: "Tarkistus OK — ei ristiriitoja havaittu."\n- Max 3-5 riviä\n\nSISÄLLÖT:\n${slidesSummary.substring(0,4000)}`
+        :`Below are all ${cur.length} ${itemName} contents.\n\nCheck ONLY:\n1. NUMBER CONTRADICTIONS: Same fact with different numbers?\n2. RECOMMENDATION CONTRADICTIONS: Different sections recommend different options?\n\nIMPORTANT:\n- Do NOT claim parts are missing — all ${cur.length} exist\n- Do NOT suggest new parts\n- Do NOT invent problems\n- If no contradictions: "Check OK — no contradictions found."\n- Max 3-5 lines\n\nCONTENTS:\n${slidesSummary.substring(0,4000)}`;
 
       const r=await api([{role:"user",content:checkPrompt}],"VAIHE: Laaduntarkistus. ÄLÄ keksi ongelmia.",false,langRef.current);
       addMsg("assistant",strip(r));
@@ -894,10 +968,13 @@ export default function App() {
   function showReview(slidesArr){
     setScreenSync("review");setEditingSlide(null);
     const cur=slidesArr||slidesRef.current;const fi=langRef.current==="fi";
+    const isDocx=outputTypeRef.current==="docx";
+    const itemWord=fi?(isDocx?"lukua":"diaa"):(isDocx?"chapters":"slides");
+    const itemSingular=fi?(isDocx?"luku":"dia"):(isDocx?"chapter":"slide");
     const list=cur.map((s,i)=>`${i+1}. ${s.icon||"📄"} ${s.label}`).join("\n");
     const instructions=fi
-      ?`${cur.length} diaa on käyty läpi!\n\n${list}\n\nToiminnot:\n• "muokkaa dia 2" — muokkaa sisältöä\n• "poista dia 3" — poistaa dian\n• "lisää dia" — lisää uusi dia\n• "korjaa ehdotukset" — tee tarkistuksen ehdottamat muutokset\n• "valmis" — generoi PowerPoint`
-      :`${cur.length} slides completed!\n\n${list}\n\nActions:\n• "edit slide 2" — edit content\n• "remove slide 3" — remove slide\n• "add slide" — add new slide\n• "fix suggestions" — apply review suggestions\n• "done" — generate PowerPoint`;
+      ?`${cur.length} ${itemWord} käyty läpi!\n\n${list}\n\nToiminnot:\n• "muokkaa ${itemSingular} 2" — muokkaa sisältöä\n• "poista ${itemSingular} 3" — poistaa\n• "lisää ${itemSingular}" — lisää uusi\n• "korjaa ehdotukset" — tee tarkistuksen ehdottamat muutokset\n• "valmis" — generoi ${isDocx?"Word":"PowerPoint"}`
+      :`${cur.length} ${itemWord} completed!\n\n${list}\n\nActions:\n• "edit ${itemSingular} 2" — edit content\n• "remove ${itemSingular} 3" — remove\n• "add ${itemSingular}" — add new\n• "fix suggestions" — apply review suggestions\n• "done" — generate ${isDocx?"Word":"PowerPoint"}`;
     setMsgs(p=>[...p,
       {type:"divider",content:T[langRef.current].phases.review},
       {role:"assistant",content:instructions},
@@ -906,41 +983,44 @@ export default function App() {
 
   async function runReview(userText){
     const lower=userText.trim().toLowerCase();const fi=langRef.current==="fi";
-    // EDIT
-    const editM=lower.match(/(?:muokkaa|muuta|korjaa|edit|change|fix)\s*(?:dia(?:a|n)?|slide)?\s*(\d+)/);
+    const isDocx=outputTypeRef.current==="docx";
+    // EDIT — tunnistaa "dia", "luku", "slide", "chapter" + numero
+    const editM=lower.match(/(?:muokkaa|muuta|korjaa|edit|change|fix)\s*(?:dia(?:a|n)?|luku(?:a|n)?|slide|chapter)?\s*(\d+)/);
     if(editM){const num=parseInt(editM[1])-1;if(num>=0&&num<slidesRef.current.length){
       const slide=slidesRef.current[num];setEditingSlide(num);setScreenSync("planning");setSlideIdxSync(num);
       setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
       addDivider("✏️ "+(fi?"Muokataan":"Editing")+": "+(num+1)+" — "+slide.label);
       addMsg("assistant",T[langRef.current].editAsk+" \""+slide.label+"\"?\n"+T[langRef.current].editCancel);return;}}
-    // DELETE
-    const delM=lower.match(/(?:poista|remove|delete)\s*(?:dia(?:a|n)?|slide)?\s*(\d+)/);
+    // DELETE — tunnistaa "dia", "luku", "slide", "chapter"
+    const delM=lower.match(/(?:poista|remove|delete)\s*(?:dia(?:a|n)?|luku(?:a|n)?|slide|chapter)?\s*(\d+)/);
     if(delM){const num=parseInt(delM[1])-1;if(num>=0&&num<slidesRef.current.length){
       const slide=slidesRef.current[num];
-      if(slide.layout==="title"){addMsg("assistant",fi?"Kansidiaa ei voi poistaa.":"Cannot remove title slide.");return;}
+      if(slide.layout==="title"){addMsg("assistant",fi?(isDocx?"Kansilehteä ei voi poistaa.":"Kansidiaa ei voi poistaa."):"Cannot remove title/cover.");return;}
       const newSlides=slidesRef.current.filter((_,i)=>i!==num);
       setSlides(newSlides);slidesRef.current=newSlides;
-      // Siivoa data JA statukset
       const nc={...collectedRef.current};delete nc[slide.id];collectedRef.current=nc;
       setStatuses(prev=>{const ns={...prev};delete ns[slide.id];return ns;});
       addMsg("assistant","✓ \""+slide.label+"\" "+(fi?"poistettu.":"removed."));
       showReview(newSlides);return;}}
-    // ADD — kysytään aihe ja paikka
-    if(["lisää dia","lisää uusi","add slide","add new","new slide"].some(w=>lower.includes(w))){
-      addDivider("➕ "+(fi?"Uusi dia":"New slide"));
+    // ADD
+    const addWords=isDocx?["lisää luku","lisää uusi","add chapter","add new","new chapter"]:["lisää dia","lisää uusi","add slide","add new","new slide"];
+    if(addWords.some(w=>lower.includes(w))||lower.match(/^lisää\s/)){
+      const itemName=fi?(isDocx?"Uusi luku":"Uusi dia"):(isDocx?"New chapter":"New slide");
+      addDivider("➕ "+itemName);
       const cur=slidesRef.current;const list=cur.map((s,i)=>`${i+1}. ${s.label}`).join(", ");
+      const layouts=isDocx?"text, table, list, summary":"bullets, table, gantt, cards, two-col";
       addMsg("assistant",fi
-        ?`Nykyinen järjestys: ${list}\n\nKerro:\n1. Dian aihe (esim. "Riskirekisteri")\n2. Monenneksi diaksi? (numero, esim. "3" = kolmanneksi)\n3. Layout: bullets, table, gantt, cards, two-col\n\nEsim: "Riskirekisteri, 3. diaksi, table"`
-        :`Current order: ${list}\n\nTell me:\n1. Slide topic (e.g. "Risk register")\n2. Position? (number, e.g. "3" = third)\n3. Layout: bullets, table, gantt, cards, two-col\n\nE.g.: "Risk register, position 3, table"`);
+        ?`Nykyinen järjestys: ${list}\n\nKerro:\n1. Aihe (esim. "Riskirekisteri")\n2. Monenneksi? (numero)\n3. Tyyppi: ${layouts}\n\nEsim: "Riskirekisteri, 3, table"`
+        :`Current order: ${list}\n\nTell me:\n1. Topic (e.g. "Risk register")\n2. Position? (number)\n3. Type: ${layouts}\n\nE.g.: "Risk register, position 3, table"`);
       setEditingSlide("adding");return;}
     // HANDLE ADD response
     if(editingSlide==="adding"){
-      const layoutM=lower.match(/(bullets|table|gantt|cards|two-col)/i);
-      const layout=layoutM?layoutM[1].toLowerCase():"bullets";
-      const posM=lower.match(/(\d+)\.?\s*(?:dia|slide|position|paikka|diaksi)/i)||lower.match(/(?:dia|slide|position|paikka|diaksi)\s*(\d+)/i)||lower.match(/\b(\d+)\b/);
+      const layoutM=isDocx?lower.match(/(text|table|list|summary)/i):lower.match(/(bullets|table|gantt|cards|two-col)/i);
+      const layout=layoutM?layoutM[1].toLowerCase():(isDocx?"text":"bullets");
+      const posM=lower.match(/(\d+)\.?\s*(?:dia|luku|slide|chapter|position|paikka|diaksi|luvuksi)/i)||lower.match(/(?:dia|luku|slide|chapter|position|paikka)\s*(\d+)/i)||lower.match(/\b(\d+)\b/);
       const pos=posM?Math.max(1,Math.min(parseInt(posM[1]),slidesRef.current.length+1)):slidesRef.current.length+1;
-      const name=userText.trim().replace(/\s*[-–—,]\s*(bullets|table|gantt|cards|two-col|\d+\.?\s*dia.*)/gi,"").replace(/\d+\.?\s*diaksi/gi,"").trim().substring(0,50)||"Uusi dia";
-      const newId="dia_"+Date.now();const newSlide={id:newId,label:name,icon:"📌",layout};
+      const name=userText.trim().replace(/\s*[-–—,]\s*(bullets|table|gantt|cards|two-col|text|list|summary|\d+\.?\s*(?:dia|luku).*)/gi,"").replace(/\d+\.?\s*(?:diaksi|luvuksi)/gi,"").trim().substring(0,50)||(isDocx?"Uusi luku":"Uusi dia");
+      const newId="item_"+Date.now();const newSlide={id:newId,label:name,icon:"📌",layout};
       const newSlides=[...slidesRef.current];newSlides.splice(pos-1,0,newSlide);
       setSlides(newSlides);slidesRef.current=newSlides;
       setStatuses(prev=>({...prev,[newId]:"pending"}));
@@ -977,7 +1057,8 @@ export default function App() {
       showReview(slidesRef.current);return;}
     // DONE
     if(["valmis","generoi","lataa","done","generate","download","finish"].some(w=>lower.includes(w))){doDownload();return;}
-    addMsg("assistant",fi?"Komennot: \"muokkaa dia X\", \"poista dia X\", \"lisää dia\", \"korjaa ehdotukset\" tai \"valmis\".":"Commands: \"edit slide X\", \"remove slide X\", \"add slide\", \"fix suggestions\" or \"done\".");
+    const itemW=fi?(isDocx?"luku":"dia"):(isDocx?"chapter":"slide");
+    addMsg("assistant",fi?`Komennot: "muokkaa ${itemW} X", "poista ${itemW} X", "lisää ${itemW}", "korjaa ehdotukset" tai "valmis".`:`Commands: "edit ${itemW} X", "remove ${itemW} X", "add ${itemW}", "fix suggestions" or "done".`);
   }
 
   async function doDownload(){
@@ -987,7 +1068,7 @@ export default function App() {
     try{
       const endpoint=isDocx?"/api/build-docx":"/api/build-pptx";
       const payload=isDocx
-        ?{sections:collectedRef.current,structure:slidesRef.current,proposals:lastProposalRef.current,lang:langRef.current}
+        ?{documentText:lastProposalRef.current["full_document"]||"",chapters:slidesRef.current,lang:langRef.current}
         :{slideData:collectedRef.current,slideStructure:slidesRef.current,lang:langRef.current};
       const r=await fetch(API+endpoint,{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify(payload)});
       if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||"HTTP "+r.status);
@@ -1039,6 +1120,8 @@ export default function App() {
       else if(s==="focus")await runFocusConfirm(apiText);
       else if(s==="insights")await runInsightsConfirm(apiText);
       else if(s==="structure")await runStructureConfirm(apiText);
+      else if(s==="deepdive")await runDeepDiveConfirm(apiText);
+      else if(s==="writing")await runDocumentEdit(apiText);
       else if(s==="planning")await runPlanning(apiText);
       else if(s==="review")await runReview(apiText);
     }catch(e){
@@ -1202,7 +1285,7 @@ export default function App() {
         const list=(s.slides||[]).map((sl,i)=>`${i+1}. ${sl.icon||"📄"} ${sl.label}`).join("\n");
         const doneCount=Object.values(s.statuses||{}).filter(v=>v==="done").length;
         setMsgs([{type:"divider",content:fi?"📂 Esitys ladattu":"📂 Presentation loaded"},
-          {role:"assistant",content:(fi?`Ladattu: ${d.presentation.name}\n${doneCount}/${(s.slides||[]).length} diaa valmiina.\n\n${list}`:`Loaded: ${d.presentation.name}\n${doneCount}/${(s.slides||[]).length} slides done.\n\n${list}`)}]);
+          {role:"assistant",content:(fi?`Ladattu: ${d.presentation.name}\n${doneCount}/${(s.slides||[]).length} osaa valmiina.\n\n${list}`:`Loaded: ${d.presentation.name}\n${doneCount}/${(s.slides||[]).length} parts done.\n\n${list}`)}]);
         setScreenSync(s.screen==="ready"?"review":(s.screen||"review"));
       }
     }catch(e){console.error("Load presentation failed:",e);}
@@ -1605,7 +1688,7 @@ export default function App() {
 
   return(<div style={{height:"100vh",display:"flex",fontFamily:"'Segoe UI',sans-serif",background:G.bg,overflow:"hidden"}}>
     {showSidebar&&<div style={{width:200,background:G.white,borderRight:"1px solid "+G.silver,padding:"14px 12px",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
-      <div style={{color:G.grey,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>{t.slides} {doneCount}/{slides.length}</div>
+      <div style={{color:G.grey,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>{outputType==="docx"?t.chapters:t.slides} {doneCount}/{slides.length}</div>
       {slides.map(s=><Pill key={s.id} slide={s} status={statuses[s.id]||"pending"}/>)}
       {screen==="ready"&&<button onClick={doDownload} disabled={building} style={{background:building?G.grey:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:13,fontWeight:700,cursor:building?"not-allowed":"pointer",marginTop:16}}>{building?"⏳...":t.redownload}</button>}
     </div>}
