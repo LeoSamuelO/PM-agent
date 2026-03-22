@@ -24,6 +24,11 @@ const T = {
     logout:"Kirjaudu ulos",admin:"Hallinta",adminUsers:"Käyttäjät",resetPw:"Nollaa salasana",deleteUser:"Poista",
     newPw:"Uusi salasana",confirmDelete:"Poistetaanko käyttäjä",pwResetOk:"Salasana nollattu!",userDeleted:"Käyttäjä poistettu",
     close:"Sulje",you:"(sinä)",firstUserAdmin:"Ensimmäinen rekisteröity käyttäjä saa admin-oikeudet.",
+    loggedInAs:"Kirjautuneena:",profile:"Profiili",changePassword:"Vaihda salasana",deleteAccount:"Poista tili",
+    currentPw:"Nykyinen salasana",newPw2:"Uusi salasana",pwChanged:"Salasana vaihdettu!",
+    wrongCurrentPw:"Väärä nykyinen salasana",confirmDeleteAccount:"Oletko varma? Kaikki projektisi ja profiilisi poistetaan pysyvästi.",
+    accountDeleted:"Tili poistettu.",enterPwToDelete:"Anna salasanasi vahvistaaksesi:",projectName:"Projektin nimi",
+    enterProjectName:"Anna projektille nimi",backToMain:"← Takaisin",addProfile:"Lisää agenttiprofiili",
     steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]],
     phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Diarakenne",planning:"📄 Vaihe 5 — Dia",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
     slides:"Diat",redownload:"🚀 Lataa uudelleen",
@@ -51,6 +56,11 @@ const T = {
     logout:"Log out",admin:"Admin",adminUsers:"Users",resetPw:"Reset password",deleteUser:"Delete",
     newPw:"New password",confirmDelete:"Delete user",pwResetOk:"Password reset!",userDeleted:"User deleted",
     close:"Close",you:"(you)",firstUserAdmin:"First registered user gets admin rights.",
+    loggedInAs:"Logged in as:",profile:"Profile",changePassword:"Change password",deleteAccount:"Delete account",
+    currentPw:"Current password",newPw2:"New password",pwChanged:"Password changed!",
+    wrongCurrentPw:"Wrong current password",confirmDeleteAccount:"Are you sure? All your projects and profiles will be permanently deleted.",
+    accountDeleted:"Account deleted.",enterPwToDelete:"Enter your password to confirm:",projectName:"Project name",
+    enterProjectName:"Give a name for the project",backToMain:"← Back",addProfile:"Add agent profile",
     steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Slide by slide","I propose, you confirm"],["📊","Ready PPTX","Gofore-themed presentation"]],
     phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Slide",review:"👀 Final review",ready:"✅ Done"},
     slides:"Slides",redownload:"🚀 Download again",
@@ -351,6 +361,17 @@ export default function App() {
   const [showProfileEditor,setShowProfileEditor]=useState(false);
   const [editProfile,setEditProfile]=useState({id:null,name:"",instructions:""});
   const [savingProject,setSavingProject]=useState(false);
+  // User profile / settings
+  const [showUserSettings,setShowUserSettings]=useState(false);
+  const [changePwCurrent,setChangePwCurrent]=useState("");
+  const [changePwNew,setChangePwNew]=useState("");
+  const [changePwMsg,setChangePwMsg]=useState("");
+  const [deleteAccountPw,setDeleteAccountPw]=useState("");
+  const [deleteAccountStep,setDeleteAccountStep]=useState(false);
+  // Project name modal
+  const [showNewProjectModal,setShowNewProjectModal]=useState(false);
+  const [newProjectName,setNewProjectName]=useState("");
+  const currentProjectNameRef=useRef("");
 
   const bottom=useRef();const fileInput=useRef();
   const collectedRef=useRef({});const proposingRef=useRef(false);
@@ -487,7 +508,7 @@ export default function App() {
   function addDecision(decision){if(!decisionsRef.current.includes(decision))decisionsRef.current=[...decisionsRef.current,decision];}
 
   // ═══ VAIHE 1 ═══
-  function startInterview(){setScreenSync("interview");setMsgs([{type:"divider",content:T[langRef.current].phases.interview},{role:"assistant",content:T[langRef.current].greeting}]);}
+  function startInterview(projectName){if(projectName)currentProjectNameRef.current=projectName;setScreenSync("interview");setMsgs([{type:"divider",content:T[langRef.current].phases.interview},{role:"assistant",content:T[langRef.current].greeting}]);}
 
   async function runInterview(userText,ctx){
     const extra=ctx||docContextRef.current;
@@ -1059,7 +1080,7 @@ export default function App() {
       proposals:lastProposalRef.current,msgs:msgs.slice(-50),profileId:activeProfileRef.current?.id||null,
     };
     const titleSlide=slidesRef.current.find(s=>s.layout==="title");
-    const autoName=titleSlide&&collectedRef.current[titleSlide.id]?.title?collectedRef.current[titleSlide.id].title:(focusTypeRef.current||"Projekti");
+    const autoName=titleSlide&&collectedRef.current[titleSlide.id]?.title?collectedRef.current[titleSlide.id].title:(currentProjectNameRef.current||focusTypeRef.current||"Projekti");
     const name=nameOverride||autoName;
     try{
       if(currentProjectId){
@@ -1124,6 +1145,30 @@ export default function App() {
   }
   function selectProfile(p){setActiveProfile(p);activeProfileRef.current=p;}
 
+  // ═══ KÄYTTÄJÄPROFIILI: salasanan vaihto & tilin poisto ═══
+  async function changePassword(){
+    if(!changePwCurrent||!changePwNew){setChangePwMsg(t.pwTooShort);return;}
+    if(changePwNew.length<6){setChangePwMsg(t.pwTooShort);return;}
+    try{
+      const r=await fetch(API+"/api/auth/password",{method:"PUT",headers:authHeaders(),body:JSON.stringify({currentPassword:changePwCurrent,newPassword:changePwNew})});
+      const d=await r.json();
+      if(r.ok){setChangePwMsg(t.pwChanged);setChangePwCurrent("");setChangePwNew("");}
+      else setChangePwMsg(d.error||"Virhe");
+    }catch{setChangePwMsg("Yhteysvirhe");}
+  }
+  async function deleteOwnAccount(){
+    if(!deleteAccountPw){return;}
+    if(!confirm(t.confirmDeleteAccount))return;
+    try{
+      const r=await fetch(API+"/api/auth/me",{method:"DELETE",headers:authHeaders(),body:JSON.stringify({password:deleteAccountPw})});
+      if(r.ok){doLogout();}
+      else{const d=await r.json();setChangePwMsg(d.error||"Virhe");}
+    }catch{setChangePwMsg("Yhteysvirhe");}
+  }
+  function goBackToIntro(){
+    setScreenSync("intro");
+  }
+
   // ═══ RENDER ═══
   const canSend=!busy&&(input.trim().length>0||attachments.length>0);
   const doneCount=slides.filter(s=>statuses[s.id]==="done").length;
@@ -1170,22 +1215,29 @@ export default function App() {
     const sectionTitle={color:G.white,fontSize:14,fontWeight:700,marginBottom:10};
     const smallBtn=(bg,clr)=>({background:bg||"transparent",border:"1px solid "+(clr||G.grey),borderRadius:6,padding:"4px 10px",color:clr||G.grey,fontSize:11,cursor:"pointer",fontWeight:600});
     return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'Segoe UI',sans-serif"}}><div style={{maxWidth:520,width:"100%",textAlign:"center"}}>
+
+    {/* ── Käyttäjäpalkki ylhäällä ── */}
+    {currentUser&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"10px 16px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <div style={{width:30,height:30,borderRadius:"50%",background:G.orange,color:G.white,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12}}>{currentUser.username?.charAt(0).toUpperCase()}</div>
+        <div style={{textAlign:"left"}}>
+          <div style={{color:G.white,fontSize:13,fontWeight:600}}>{currentUser.username}</div>
+          <div style={{color:G.grey,fontSize:10}}>{t.loggedInAs}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={()=>{setShowUserSettings(true);setChangePwMsg("");setChangePwCurrent("");setChangePwNew("");setDeleteAccountStep(false);setDeleteAccountPw("");}} style={smallBtn("",G.codeBlue)}>{t.profile}</button>
+        {currentUser.is_admin===1&&<button onClick={()=>{setShowAdmin(true);loadAdminUsers();setAdminMsg("");}} style={smallBtn("",G.mint)}>{t.admin}</button>}
+        <button onClick={doLogout} style={smallBtn("",G.orange)}>{t.logout}</button>
+      </div>
+    </div>}
+
     <div style={{width:68,height:68,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:G.white,fontWeight:700,margin:"0 auto 24px"}}>G</div>
     <h1 style={{color:G.white,fontSize:24,fontWeight:700,margin:"0 0 8px"}}>{t.title}</h1>
     <p style={{color:G.codeBlue,fontSize:14,lineHeight:1.7,margin:"0 0 16px"}}>{t.subtitle}</p><LangToggle/>
 
-    {/* ── Profiilin valinta ── */}
-    <div style={{...cardStyle,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-      <span style={{color:G.grey,fontSize:12,fontWeight:600}}>{t.activeProfileLabel}:</span>
-      {myProfiles.length===0&&<span style={{color:G.grey,fontSize:12,fontStyle:"italic"}}>{t.noProfileSelected}</span>}
-      {myProfiles.map(p=><button key={p.id} onClick={()=>selectProfile(activeProfile?.id===p.id?null:p)}
-        style={{...smallBtn(activeProfile?.id===p.id?G.orange:"transparent",activeProfile?.id===p.id?G.white:G.codeBlue),
-          background:activeProfile?.id===p.id?G.orange:"transparent"}}>{p.name}</button>)}
-      <button onClick={()=>{setEditProfile({id:null,name:"",instructions:""});setShowProfileEditor(true);}} style={smallBtn(G.mint,G.white)}>+ {t.newProfile}</button>
-    </div>
-
-    {/* ── Uusi projekti ── */}
-    <button onClick={()=>{clearSession();setShowRecover(false);setCurrentProjectId(null);startInterview();}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:20}}>
+    {/* ── Uusi projekti (avaa nimimodaalin) ── */}
+    <button onClick={()=>{setNewProjectName("");setShowNewProjectModal(true);}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:20}}>
       {t.newProject} →
     </button>
 
@@ -1206,17 +1258,75 @@ export default function App() {
       </div>)}
     </div>}
 
-    {/* ── Agenttiprofiilit hallinta ── */}
-    {myProfiles.length>0&&<div style={{marginBottom:20}}>
+    {/* ── Agenttiprofiilit alhaalla: klikkaa valitaksesi + lisää-nappi ── */}
+    <div style={{marginBottom:20}}>
       <div style={sectionTitle}>{t.agentProfiles}</div>
-      {myProfiles.map(p=><div key={p.id} style={{...cardStyle,display:"flex",alignItems:"center",gap:10}}>
+      {myProfiles.length===0&&<div style={{color:G.grey,fontSize:12,fontStyle:"italic",marginBottom:10}}>{t.noProfiles}</div>}
+      {myProfiles.map(p=><div key={p.id} onClick={()=>selectProfile(activeProfile?.id===p.id?null:p)}
+        style={{...cardStyle,display:"flex",alignItems:"center",gap:10,cursor:"pointer",
+          border:activeProfile?.id===p.id?"2px solid "+G.orange:"1px solid rgba(255,255,255,0.1)",
+          background:activeProfile?.id===p.id?"rgba(232,82,26,0.12)":"rgba(255,255,255,0.06)"}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{color:G.white,fontSize:13,fontWeight:600}}>{p.name}</div>
+          <div style={{color:activeProfile?.id===p.id?G.orange:G.white,fontSize:13,fontWeight:600}}>{p.name}{activeProfile?.id===p.id&&" ✓"}</div>
           <div style={{color:G.grey,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.instructions.substring(0,80)}{p.instructions.length>80?"...":""}</div>
         </div>
-        <button onClick={()=>{setEditProfile({id:p.id,name:p.name,instructions:p.instructions});setShowProfileEditor(true);}} style={smallBtn("",G.codeBlue)}>{t.editProfileBtn}</button>
-        <button onClick={()=>{if(confirm(t.deleteConfirm))deleteProfile(p.id);}} style={smallBtn("",G.orange)}>{t.deleteProject}</button>
+        <button onClick={e=>{e.stopPropagation();setEditProfile({id:p.id,name:p.name,instructions:p.instructions});setShowProfileEditor(true);}} style={smallBtn("",G.codeBlue)}>{t.editProfileBtn}</button>
+        <button onClick={e=>{e.stopPropagation();if(confirm(t.deleteConfirm))deleteProfile(p.id);}} style={smallBtn("",G.orange)}>{t.deleteProject}</button>
       </div>)}
+      <button onClick={()=>{setEditProfile({id:null,name:"",instructions:""});setShowProfileEditor(true);}} style={{width:"100%",background:"transparent",border:"1px dashed rgba(255,255,255,0.2)",borderRadius:12,padding:"10px 0",fontSize:13,fontWeight:600,color:G.mint,cursor:"pointer",marginTop:4}}>+ {t.addProfile}</button>
+    </div>
+
+    {/* ── Projektin nimi -modaali ── */}
+    {showNewProjectModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowNewProjectModal(false);}}>
+      <div style={{background:G.white,borderRadius:16,padding:28,width:400,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+        <h3 style={{margin:"0 0 16px",color:G.deepBlue}}>{t.enterProjectName}</h3>
+        <input type="text" value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} placeholder={t.projectName}
+          onKeyDown={e=>{if(e.key==="Enter"&&newProjectName.trim()){setShowNewProjectModal(false);clearSession();setShowRecover(false);setCurrentProjectId(null);startInterview(newProjectName.trim());}}}
+          style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:14,marginBottom:14,boxSizing:"border-box",outline:"none"}} autoFocus/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{if(newProjectName.trim()){setShowNewProjectModal(false);clearSession();setShowRecover(false);setCurrentProjectId(null);startInterview(newProjectName.trim());}}}
+            disabled={!newProjectName.trim()}
+            style={{flex:1,background:newProjectName.trim()?G.orange:G.silver,color:G.white,border:"none",borderRadius:8,padding:"10px 0",fontWeight:700,cursor:newProjectName.trim()?"pointer":"not-allowed"}}>{t.start}</button>
+          <button onClick={()=>setShowNewProjectModal(false)} style={{flex:1,background:G.light,color:G.deepBlue,border:"none",borderRadius:8,padding:"10px 0",fontWeight:600,cursor:"pointer"}}>{t.close}</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* ── Käyttäjäasetukset -modaali ── */}
+    {showUserSettings&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowUserSettings(false);}}>
+      <div style={{background:G.white,borderRadius:16,padding:28,width:420,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h3 style={{margin:0,color:G.deepBlue}}>{t.profile}: {currentUser?.username}</h3>
+          <button onClick={()=>setShowUserSettings(false)} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:G.grey}}>×</button>
+        </div>
+        {changePwMsg&&<div style={{background:G.light,border:"1px solid "+G.silver,borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:13,color:G.deepBlue}}>{changePwMsg}</div>}
+        {/* Salasanan vaihto */}
+        <div style={{marginBottom:20}}>
+          <div style={{fontWeight:600,color:G.deepBlue,fontSize:14,marginBottom:10}}>{t.changePassword}</div>
+          <input type="password" value={changePwCurrent} onChange={e=>setChangePwCurrent(e.target.value)} placeholder={t.currentPw}
+            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:13,marginBottom:8,boxSizing:"border-box",outline:"none"}}/>
+          <input type="password" value={changePwNew} onChange={e=>setChangePwNew(e.target.value)} placeholder={t.newPw2}
+            onKeyDown={e=>{if(e.key==="Enter")changePassword();}}
+            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:13,marginBottom:10,boxSizing:"border-box",outline:"none"}}/>
+          <button onClick={changePassword} style={{background:G.digitalBlue,color:G.white,border:"none",borderRadius:8,padding:"8px 16px",fontWeight:600,cursor:"pointer",fontSize:13}}>{t.changePassword}</button>
+        </div>
+        {/* Tilin poisto */}
+        <div style={{borderTop:"1px solid "+G.silver,paddingTop:16}}>
+          <div style={{fontWeight:600,color:G.orange,fontSize:14,marginBottom:10}}>{t.deleteAccount}</div>
+          {!deleteAccountStep?
+            <button onClick={()=>setDeleteAccountStep(true)} style={{background:"transparent",border:"1px solid "+G.orange,borderRadius:8,padding:"8px 16px",color:G.orange,fontWeight:600,cursor:"pointer",fontSize:13}}>{t.deleteAccount}</button>
+          :<div>
+            <div style={{color:G.grey,fontSize:12,marginBottom:8}}>{t.enterPwToDelete}</div>
+            <input type="password" value={deleteAccountPw} onChange={e=>setDeleteAccountPw(e.target.value)} placeholder={t.password}
+              onKeyDown={e=>{if(e.key==="Enter")deleteOwnAccount();}}
+              style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid "+G.orange,fontSize:13,marginBottom:8,boxSizing:"border-box",outline:"none"}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={deleteOwnAccount} style={{background:G.orange,color:G.white,border:"none",borderRadius:8,padding:"8px 16px",fontWeight:700,cursor:"pointer",fontSize:13}}>{t.deleteAccount}</button>
+              <button onClick={()=>{setDeleteAccountStep(false);setDeleteAccountPw("");}} style={{background:G.light,color:G.deepBlue,border:"none",borderRadius:8,padding:"8px 16px",fontWeight:600,cursor:"pointer",fontSize:13}}>{t.close}</button>
+            </div>
+          </div>}
+        </div>
+      </div>
     </div>}
 
     {/* ── Profiilieditori modaali ── */}
@@ -1234,6 +1344,38 @@ export default function App() {
         </div>
       </div>
     </div>}
+
+    {/* ── Admin-paneeli modaali (myös introsta käyttöön) ── */}
+    {showAdmin&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowAdmin(false);}}>
+      <div style={{background:G.white,borderRadius:16,padding:28,width:500,maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h2 style={{margin:0,color:G.deepBlue,fontSize:18}}>{t.adminUsers}</h2>
+          <button onClick={()=>setShowAdmin(false)} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:G.grey}}>×</button>
+        </div>
+        {adminMsg&&<div style={{background:G.light,border:"1px solid "+G.silver,borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:13,color:G.deepBlue}}>{adminMsg}</div>}
+        {adminUsers.map(u=><div key={u.id} style={{border:"1px solid "+G.silver,borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <span style={{fontWeight:600,color:G.deepBlue,fontSize:14}}>{u.username}</span>
+              {u.id===currentUser?.id&&<span style={{color:G.mint,fontSize:12,marginLeft:6}}>{t.you}</span>}
+              {u.is_admin===1&&<span style={{background:G.orange,color:G.white,fontSize:10,padding:"2px 6px",borderRadius:4,marginLeft:6}}>admin</span>}
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setResetPwId(resetPwId===u.id?null:u.id);setResetPwVal("");}} style={{background:"transparent",border:"1px solid "+G.digitalBlue,borderRadius:6,padding:"3px 8px",color:G.digitalBlue,fontSize:11,cursor:"pointer"}}>{t.resetPw}</button>
+              {u.id!==currentUser?.id&&<button onClick={()=>adminDeleteUser(u.id,u.username)} style={{background:"transparent",border:"1px solid "+G.orange,borderRadius:6,padding:"3px 8px",color:G.orange,fontSize:11,cursor:"pointer"}}>{t.deleteUser}</button>}
+            </div>
+          </div>
+          <div style={{color:G.grey,fontSize:11,marginTop:4}}>
+            {u.created_at&&<span>Luotu: {new Date(u.created_at+"Z").toLocaleDateString()}</span>}
+            {u.last_login&&<span style={{marginLeft:12}}>Viimeksi: {new Date(u.last_login+"Z").toLocaleDateString()}</span>}
+          </div>
+          {resetPwId===u.id&&<div style={{display:"flex",gap:6,marginTop:8}}>
+            <input type="text" value={resetPwVal} onChange={e=>setResetPwVal(e.target.value)} placeholder={t.newPw} style={{flex:1,padding:"6px 10px",borderRadius:6,border:"1px solid "+G.silver,fontSize:13,outline:"none"}}/>
+            <button onClick={()=>adminResetPw(u.id)} style={{background:G.digitalBlue,color:G.white,border:"none",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>OK</button>
+          </div>}
+        </div>)}
+      </div>
+    </div>}
   </div></div>);
   }
 
@@ -1247,14 +1389,13 @@ export default function App() {
     </div>}
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <div style={{background:G.deepBlue,padding:"8px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <button onClick={goBackToIntro} style={{background:"transparent",border:"1px solid "+G.grey,borderRadius:6,padding:"4px 10px",color:G.codeBlue,fontSize:11,cursor:"pointer",fontWeight:600,flexShrink:0}}>{t.backToMain}</button>
         <div style={{width:28,height:28,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:G.white,fontWeight:700,fontSize:12}}>G</div>
         <div style={{flex:1}}><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11}}>{phaseText}</div></div>
         {currentUser&&<div style={{display:"flex",alignItems:"center",gap:8}}>
           {activeProfile&&<span style={{background:G.orange,color:G.white,fontSize:10,padding:"2px 8px",borderRadius:4}}>{activeProfile.name}</span>}
           <button onClick={()=>saveProject()} disabled={savingProject} style={{background:"transparent",border:"1px solid "+G.mint,borderRadius:6,padding:"4px 10px",color:G.mint,fontSize:11,cursor:savingProject?"not-allowed":"pointer",fontWeight:600}}>{savingProject?"...":t.saveProject}</button>
           <span style={{color:G.grey,fontSize:12}}>{currentUser.username}</span>
-          {currentUser.is_admin===1&&<button onClick={()=>{setShowAdmin(true);loadAdminUsers();setAdminMsg("");}} style={{background:"transparent",border:"1px solid "+G.mint,borderRadius:6,padding:"4px 10px",color:G.mint,fontSize:11,cursor:"pointer"}}>{t.admin}</button>}
-          <button onClick={doLogout} style={{background:"transparent",border:"1px solid "+G.grey,borderRadius:6,padding:"4px 10px",color:G.grey,fontSize:11,cursor:"pointer"}}>{t.logout}</button>
         </div>}
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"20px 16px",position:"relative"}}

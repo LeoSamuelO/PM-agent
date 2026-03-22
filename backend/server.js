@@ -75,6 +75,30 @@ app.get("/api/auth/me", (req, res) => {
   res.json({ user });
 });
 
+// ═══ SALASANAN VAIHTO ═══
+app.put("/api/auth/password", (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: "Täytä kaikki kentät" });
+  if (newPassword.length < 6) return res.status(400).json({ error: "Salasanan on oltava vähintään 6 merkkiä" });
+  const user = users.getByUsername.get(users.getById.get(req.userId)?.username);
+  if (!user) return res.status(404).json({ error: "Käyttäjää ei löydy" });
+  if (!bcrypt.compareSync(currentPassword, user.password_hash)) return res.status(401).json({ error: "Väärä nykyinen salasana" });
+  const hash = bcrypt.hashSync(newPassword, 12);
+  users.resetPassword.run(hash, req.userId);
+  res.json({ message: "Salasana vaihdettu!" });
+});
+
+// ═══ TILIN POISTO (itse) ═══
+app.delete("/api/auth/me", (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: "Salasana vaaditaan" });
+  const user = users.getByUsername.get(users.getById.get(req.userId)?.username);
+  if (!user) return res.status(404).json({ error: "Käyttäjää ei löydy" });
+  if (!bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: "Väärä salasana" });
+  users.delete.run(req.userId);
+  res.json({ message: "Tili poistettu" });
+});
+
 // ═══ PROJEKTIT ═══
 app.get("/api/projects", (req, res) => {
   const list = projects.getByUser.all(req.userId);
