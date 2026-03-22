@@ -15,9 +15,12 @@ const T = {
     username:"Käyttäjänimi",accessKey:"Avain",wrongPw:"Väärä käyttäjänimi tai salasana",wrongKey:"Väärä avain",
     noAccount:"Ei tiliä?",hasAccount:"Onko jo tili?",pwMismatch:"Salasanat eivät täsmää",pwTooShort:"Salasanan on oltava vähintään 6 merkkiä",
     usernameTaken:"Käyttäjänimi on jo käytössä",usernameTooShort:"Käyttäjänimi liian lyhyt",
-    myProjects:"Omat projektit",newProject:"Uusi projekti",saveProject:"Tallenna projekti",
+    myProjects:"Omat projektit",newProject:"Uusi projekti",saveProject:"Tallenna",savedOk:"Tallennettu!",
+    loadProject:"Avaa",deleteProject:"Poista",continueProject:"Jatka",
     agentProfiles:"Agenttiprofiilit",newProfile:"Uusi profiili",profileName:"Profiilin nimi",profileInstr:"Ohjeet agentille...",
+    editProfileBtn:"Muokkaa",selectProfile:"Valitse",activeProfileLabel:"Profiili",noProfileSelected:"Ei profiilia",
     deleteConfirm:"Haluatko varmasti poistaa tämän?",noProjects:"Ei tallennettuja projekteja.",noProfiles:"Ei agenttiprofiileja.",
+    profileHint:"Kirjoita ohjeet agentille, esim: 'Käytä paljon kaavioita', 'Pidä esitys tiiviinä max 6 diaa', 'Asiakas pitää visuaalisesta tyylistä'",
     logout:"Kirjaudu ulos",admin:"Hallinta",adminUsers:"Käyttäjät",resetPw:"Nollaa salasana",deleteUser:"Poista",
     newPw:"Uusi salasana",confirmDelete:"Poistetaanko käyttäjä",pwResetOk:"Salasana nollattu!",userDeleted:"Käyttäjä poistettu",
     close:"Sulje",you:"(sinä)",firstUserAdmin:"Ensimmäinen rekisteröity käyttäjä saa admin-oikeudet.",
@@ -39,9 +42,12 @@ const T = {
     username:"Username",accessKey:"Access key",wrongPw:"Wrong username or password",wrongKey:"Wrong access key",
     noAccount:"No account?",hasAccount:"Already have an account?",pwMismatch:"Passwords don't match",pwTooShort:"Password must be at least 6 characters",
     usernameTaken:"Username already taken",usernameTooShort:"Username too short",
-    myProjects:"My projects",newProject:"New project",saveProject:"Save project",
+    myProjects:"My projects",newProject:"New project",saveProject:"Save",savedOk:"Saved!",
+    loadProject:"Open",deleteProject:"Delete",continueProject:"Continue",
     agentProfiles:"Agent profiles",newProfile:"New profile",profileName:"Profile name",profileInstr:"Instructions for agent...",
+    editProfileBtn:"Edit",selectProfile:"Select",activeProfileLabel:"Profile",noProfileSelected:"No profile",
     deleteConfirm:"Are you sure you want to delete this?",noProjects:"No saved projects.",noProfiles:"No agent profiles.",
+    profileHint:"Write instructions for the agent, e.g.: 'Use lots of charts', 'Keep presentation concise max 6 slides', 'Client prefers visual style'",
     logout:"Log out",admin:"Admin",adminUsers:"Users",resetPw:"Reset password",deleteUser:"Delete",
     newPw:"New password",confirmDelete:"Delete user",pwResetOk:"Password reset!",userDeleted:"User deleted",
     close:"Close",you:"(you)",firstUserAdmin:"First registered user gets admin rights.",
@@ -158,8 +164,9 @@ async function fetchWithRetry(url, options, { timeout = 90000, retries = 2 } = {
   }
 }
 
-async function callAPI(messages, systemExtra, forceSearch, lang) {
-  const system = systemExtra ? getSystem(lang||"fi")+"\n\n"+systemExtra : getSystem(lang||"fi");
+async function callAPI(messages, systemExtra, forceSearch, lang, profileInstructions) {
+  let system = systemExtra ? getSystem(lang||"fi")+"\n\n"+systemExtra : getSystem(lang||"fi");
+  if (profileInstructions) system += "\n\n═══ AGENTTIPROFIILI (käyttäjän lisäohjeet) ═══\n" + profileInstructions;
   // Tarkista kaikkien viimeisten viestien sisältö — ei vain viimeistä käyttäjäviestiä
   const recentTexts = messages.slice(-3).map(m => m.content).join(" ");
   const useSearch = forceSearch || shouldSearch(recentTexts);
@@ -335,6 +342,15 @@ export default function App() {
   const [attachments,setAttachments]=useState([]); const [docContext,setDocContext]=useState("");
   const [focusType,setFocusType]=useState(""); const [dragOver,setDragOver]=useState(false);
   const [editingSlide,setEditingSlide]=useState(null);
+  // Projektit & profiilit
+  const [myProjects,setMyProjects]=useState([]);
+  const [myProfiles,setMyProfiles]=useState([]);
+  const [activeProfile,setActiveProfile]=useState(null);
+  const activeProfileRef=useRef(null);
+  const [currentProjectId,setCurrentProjectId]=useState(null);
+  const [showProfileEditor,setShowProfileEditor]=useState(false);
+  const [editProfile,setEditProfile]=useState({id:null,name:"",instructions:""});
+  const [savingProject,setSavingProject]=useState(false);
 
   const bottom=useRef();const fileInput=useRef();
   const collectedRef=useRef({});const proposingRef=useRef(false);
@@ -378,7 +394,7 @@ export default function App() {
   function setSlideIdxSync(v){setSlideIdx(v);slideIdxRef.current=v;}
   const addMsg=useCallback((role,content)=>setMsgs(p=>[...p,{role,content}]),[]);
   const addDivider=useCallback((text)=>setMsgs(p=>[...p,{type:"divider",content:text}]),[]);
-  const api=useCallback((msgs,extra,search)=>callAPI(msgs,extra,search,langRef.current),[]);
+  const api=useCallback((msgs,extra,search)=>callAPI(msgs,extra,search,langRef.current,activeProfileRef.current?.instructions||""),[]);
 
   // ═══ SESSION RECOVERY: Tallenna tila localStorageen ═══
   function saveSession(){
@@ -1019,13 +1035,94 @@ export default function App() {
     }catch{setAdminMsg("Virhe");}
   }
 
-  // Hae käyttäjätiedot tokenilla sivun latautuessa
+  // Hae käyttäjätiedot + projektit + profiilit sivun latautuessa
   useEffect(()=>{
     if(authed&&!currentUser){
-      fetch(API+"/api/auth/me",{headers:{"x-session-token":localStorage.getItem("pm_token")||""}})
-        .then(r=>r.ok?r.json():Promise.reject()).then(d=>setCurrentUser(d.user)).catch(()=>{localStorage.removeItem("pm_token");setAuthed(false);});
+      const h={"x-session-token":localStorage.getItem("pm_token")||""};
+      fetch(API+"/api/auth/me",{headers:h}).then(r=>r.ok?r.json():Promise.reject()).then(d=>setCurrentUser(d.user)).catch(()=>{localStorage.removeItem("pm_token");setAuthed(false);});
+      loadProjects();loadProfiles();
     }
   },[authed]);
+  const authHeaders=()=>({"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""});
+
+  // ═══ PROJEKTIEN HALLINTA ═══
+  async function loadProjects(){
+    try{const r=await fetch(API+"/api/projects",{headers:authHeaders()});if(r.ok){const d=await r.json();setMyProjects(d.projects||[]);}}catch{}
+  }
+  async function saveProject(nameOverride){
+    setSavingProject(true);
+    const state={
+      screen:screenRef.current,slides:slidesRef.current,slideIdx:slideIdxRef.current,
+      collected:collectedRef.current,statuses:Object.fromEntries(slidesRef.current.map(s=>[s.id,statuses[s.id]||"pending"])),
+      summary:summaryRef.current,decisions:decisionsRef.current,
+      docContext:docContextRef.current?.substring(0,3000),focus:focusTypeRef.current,
+      proposals:lastProposalRef.current,msgs:msgs.slice(-50),profileId:activeProfileRef.current?.id||null,
+    };
+    const titleSlide=slidesRef.current.find(s=>s.layout==="title");
+    const autoName=titleSlide&&collectedRef.current[titleSlide.id]?.title?collectedRef.current[titleSlide.id].title:(focusTypeRef.current||"Projekti");
+    const name=nameOverride||autoName;
+    try{
+      if(currentProjectId){
+        await fetch(API+"/api/projects/"+currentProjectId,{method:"PUT",headers:authHeaders(),body:JSON.stringify({name,focusType:focusTypeRef.current,stateJson:state})});
+      }else{
+        const r=await fetch(API+"/api/projects",{method:"POST",headers:authHeaders(),body:JSON.stringify({name,focusType:focusTypeRef.current,stateJson:state})});
+        const d=await r.json();if(d.id)setCurrentProjectId(d.id);
+      }
+      loadProjects();
+    }catch{}
+    setSavingProject(false);
+  }
+  async function loadProject(id){
+    try{
+      const r=await fetch(API+"/api/projects/"+id,{headers:authHeaders()});
+      if(!r.ok)return;const d=await r.json();const s=d.project.state_json;
+      setCurrentProjectId(id);
+      slidesRef.current=s.slides||[];setSlides(s.slides||[]);
+      collectedRef.current=s.collected||{};
+      summaryRef.current=s.summary||"";decisionsRef.current=s.decisions||[];
+      docContextRef.current=s.docContext||"";
+      focusTypeRef.current=s.focus||"";setFocusType(s.focus||"");
+      lastProposalRef.current=s.proposals||{};
+      setStatuses(s.statuses||{});setSlideIdxSync(s.slideIdx||0);
+      // Palauta profiili jos oli valittuna
+      if(s.profileId){const p=myProfiles.find(pr=>pr.id===s.profileId);if(p){setActiveProfile(p);activeProfileRef.current=p;}}
+      // Palauta viestit
+      if(s.msgs?.length>0)setMsgs(s.msgs);
+      else{
+        const fi=langRef.current==="fi";
+        const list=(s.slides||[]).map((sl,i)=>`${i+1}. ${sl.icon||"📄"} ${sl.label}`).join("\n");
+        const doneCount=Object.values(s.statuses||{}).filter(v=>v==="done").length;
+        setMsgs([{type:"divider",content:fi?"📂 Projekti ladattu":"📂 Project loaded"},
+          {role:"assistant",content:(fi?`Ladattu: ${d.project.name}\n${doneCount}/${(s.slides||[]).length} diaa valmiina.\n\n${list}`:`Loaded: ${d.project.name}\n${doneCount}/${(s.slides||[]).length} slides done.\n\n${list}`)}]);
+      }
+      setScreenSync(s.screen==="ready"?"review":(s.screen||"review"));
+    }catch(e){console.error("Load project failed:",e);}
+  }
+  async function deleteProject(id){
+    try{await fetch(API+"/api/projects/"+id,{method:"DELETE",headers:authHeaders()});loadProjects();if(currentProjectId===id)setCurrentProjectId(null);}catch{}
+  }
+
+  // ═══ PROFIILIEN HALLINTA ═══
+  async function loadProfiles(){
+    try{const r=await fetch(API+"/api/profiles",{headers:authHeaders()});if(r.ok){const d=await r.json();setMyProfiles(d.profiles||[]);}}catch{}
+  }
+  async function saveProfile(){
+    if(!editProfile.name)return;
+    try{
+      if(editProfile.id){
+        await fetch(API+"/api/profiles/"+editProfile.id,{method:"PUT",headers:authHeaders(),body:JSON.stringify({name:editProfile.name,instructions:editProfile.instructions})});
+      }else{
+        await fetch(API+"/api/profiles",{method:"POST",headers:authHeaders(),body:JSON.stringify({name:editProfile.name,instructions:editProfile.instructions})});
+      }
+      loadProfiles();setShowProfileEditor(false);setEditProfile({id:null,name:"",instructions:""});
+    }catch{}
+  }
+  async function deleteProfile(id){
+    try{await fetch(API+"/api/profiles/"+id,{method:"DELETE",headers:authHeaders()});loadProfiles();
+      if(activeProfile?.id===id){setActiveProfile(null);activeProfileRef.current=null;}
+    }catch{}
+  }
+  function selectProfile(p){setActiveProfile(p);activeProfileRef.current=p;}
 
   // ═══ RENDER ═══
   const canSend=!busy&&(input.trim().length>0||attachments.length>0);
@@ -1068,18 +1165,77 @@ export default function App() {
     </div></div>);
   }
 
-  if(screen==="intro")return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'Segoe UI',sans-serif"}}><div style={{maxWidth:480,width:"100%",textAlign:"center"}}>
+  if(screen==="intro"){
+    const cardStyle={background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:16,marginBottom:8,textAlign:"left"};
+    const sectionTitle={color:G.white,fontSize:14,fontWeight:700,marginBottom:10};
+    const smallBtn=(bg,clr)=>({background:bg||"transparent",border:"1px solid "+(clr||G.grey),borderRadius:6,padding:"4px 10px",color:clr||G.grey,fontSize:11,cursor:"pointer",fontWeight:600});
+    return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'Segoe UI',sans-serif"}}><div style={{maxWidth:520,width:"100%",textAlign:"center"}}>
     <div style={{width:68,height:68,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:G.white,fontWeight:700,margin:"0 auto 24px"}}>G</div>
     <h1 style={{color:G.white,fontSize:24,fontWeight:700,margin:"0 0 8px"}}>{t.title}</h1>
-    <p style={{color:G.codeBlue,fontSize:14,lineHeight:1.7,margin:"0 0 24px"}}>{t.subtitle}</p><LangToggle/>
-    <div style={{background:"rgba(255,255,255,0.05)",borderRadius:14,padding:20,marginBottom:32,textAlign:"left"}}>
-      {t.steps.map(([i,title,desc])=><div key={title} style={{display:"flex",gap:12,marginBottom:14}}><span style={{fontSize:18}}>{i}</span><div><div style={{color:G.white,fontWeight:600,fontSize:13}}>{title}</div><div style={{color:G.grey,fontSize:12}}>{desc}</div></div></div>)}
+    <p style={{color:G.codeBlue,fontSize:14,lineHeight:1.7,margin:"0 0 16px"}}>{t.subtitle}</p><LangToggle/>
+
+    {/* ── Profiilin valinta ── */}
+    <div style={{...cardStyle,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span style={{color:G.grey,fontSize:12,fontWeight:600}}>{t.activeProfileLabel}:</span>
+      {myProfiles.length===0&&<span style={{color:G.grey,fontSize:12,fontStyle:"italic"}}>{t.noProfileSelected}</span>}
+      {myProfiles.map(p=><button key={p.id} onClick={()=>selectProfile(activeProfile?.id===p.id?null:p)}
+        style={{...smallBtn(activeProfile?.id===p.id?G.orange:"transparent",activeProfile?.id===p.id?G.white:G.codeBlue),
+          background:activeProfile?.id===p.id?G.orange:"transparent"}}>{p.name}</button>)}
+      <button onClick={()=>{setEditProfile({id:null,name:"",instructions:""});setShowProfileEditor(true);}} style={smallBtn(G.mint,G.white)}>+ {t.newProfile}</button>
     </div>
-    {showRecover&&<button onClick={recoverSession} style={{width:"100%",background:G.mint,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:14,fontWeight:700,cursor:"pointer",marginBottom:10}}>
+
+    {/* ── Uusi projekti ── */}
+    <button onClick={()=>{clearSession();setShowRecover(false);setCurrentProjectId(null);startInterview();}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:700,cursor:"pointer",marginBottom:20}}>
+      {t.newProject} →
+    </button>
+
+    {showRecover&&<button onClick={recoverSession} style={{width:"100%",background:G.mint,color:G.white,border:"none",borderRadius:12,padding:"12px 0",fontSize:13,fontWeight:700,cursor:"pointer",marginBottom:16}}>
       {langRef.current==="fi"?"🔄 Palauta keskeneräinen sessio":"🔄 Recover previous session"}
     </button>}
-    <button onClick={()=>{clearSession();setShowRecover(false);startInterview();}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"14px 0",fontSize:16,fontWeight:700,cursor:"pointer"}}>{t.start}</button>
+
+    {/* ── Omat projektit ── */}
+    {myProjects.length>0&&<div style={{marginBottom:20}}>
+      <div style={sectionTitle}>{t.myProjects}</div>
+      {myProjects.map(p=><div key={p.id} style={{...cardStyle,display:"flex",alignItems:"center",gap:10}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:G.white,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+          <div style={{color:G.grey,fontSize:11}}>{p.focus_type&&<span>{p.focus_type} · </span>}{new Date(p.updated_at+"Z").toLocaleDateString()}</div>
+        </div>
+        <button onClick={()=>loadProject(p.id)} style={smallBtn(G.digitalBlue,G.white)}>{t.continueProject}</button>
+        <button onClick={()=>{if(confirm(t.deleteConfirm))deleteProject(p.id);}} style={smallBtn("",G.orange)}>{t.deleteProject}</button>
+      </div>)}
+    </div>}
+
+    {/* ── Agenttiprofiilit hallinta ── */}
+    {myProfiles.length>0&&<div style={{marginBottom:20}}>
+      <div style={sectionTitle}>{t.agentProfiles}</div>
+      {myProfiles.map(p=><div key={p.id} style={{...cardStyle,display:"flex",alignItems:"center",gap:10}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:G.white,fontSize:13,fontWeight:600}}>{p.name}</div>
+          <div style={{color:G.grey,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.instructions.substring(0,80)}{p.instructions.length>80?"...":""}</div>
+        </div>
+        <button onClick={()=>{setEditProfile({id:p.id,name:p.name,instructions:p.instructions});setShowProfileEditor(true);}} style={smallBtn("",G.codeBlue)}>{t.editProfileBtn}</button>
+        <button onClick={()=>{if(confirm(t.deleteConfirm))deleteProfile(p.id);}} style={smallBtn("",G.orange)}>{t.deleteProject}</button>
+      </div>)}
+    </div>}
+
+    {/* ── Profiilieditori modaali ── */}
+    {showProfileEditor&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowProfileEditor(false);}}>
+      <div style={{background:G.white,borderRadius:16,padding:28,width:440,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+        <h3 style={{margin:"0 0 16px",color:G.deepBlue}}>{editProfile.id?t.editProfileBtn:t.newProfile}</h3>
+        <input type="text" value={editProfile.name} onChange={e=>setEditProfile(p=>({...p,name:e.target.value}))} placeholder={t.profileName}
+          style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:14,marginBottom:10,boxSizing:"border-box",outline:"none"}}/>
+        <textarea value={editProfile.instructions} onChange={e=>setEditProfile(p=>({...p,instructions:e.target.value}))} placeholder={t.profileInstr}
+          style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:13,marginBottom:6,boxSizing:"border-box",outline:"none",minHeight:120,resize:"vertical",fontFamily:"inherit"}}/>
+        <div style={{color:G.grey,fontSize:11,marginBottom:14}}>{t.profileHint}</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={saveProfile} style={{flex:1,background:G.orange,color:G.white,border:"none",borderRadius:8,padding:"10px 0",fontWeight:700,cursor:"pointer"}}>{t.saveProject}</button>
+          <button onClick={()=>setShowProfileEditor(false)} style={{flex:1,background:G.light,color:G.deepBlue,border:"none",borderRadius:8,padding:"10px 0",fontWeight:600,cursor:"pointer"}}>{t.close}</button>
+        </div>
+      </div>
+    </div>}
   </div></div>);
+  }
 
   const phaseText=(()=>{if(screen==="planning"&&slides.length>0)return t.phases.planning+" "+(slideIdx+1)+"/"+slides.length+(slides[slideIdx]?" — "+slides[slideIdx].label:"");if(screen==="insights"&&focusType)return t.phases.insights+": "+focusType;return t.phases[screen]||"";})();
 
@@ -1093,7 +1249,9 @@ export default function App() {
       <div style={{background:G.deepBlue,padding:"8px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <div style={{width:28,height:28,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:G.white,fontWeight:700,fontSize:12}}>G</div>
         <div style={{flex:1}}><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11}}>{phaseText}</div></div>
-        {currentUser&&<div style={{display:"flex",alignItems:"center",gap:10}}>
+        {currentUser&&<div style={{display:"flex",alignItems:"center",gap:8}}>
+          {activeProfile&&<span style={{background:G.orange,color:G.white,fontSize:10,padding:"2px 8px",borderRadius:4}}>{activeProfile.name}</span>}
+          <button onClick={()=>saveProject()} disabled={savingProject} style={{background:"transparent",border:"1px solid "+G.mint,borderRadius:6,padding:"4px 10px",color:G.mint,fontSize:11,cursor:savingProject?"not-allowed":"pointer",fontWeight:600}}>{savingProject?"...":t.saveProject}</button>
           <span style={{color:G.grey,fontSize:12}}>{currentUser.username}</span>
           {currentUser.is_admin===1&&<button onClick={()=>{setShowAdmin(true);loadAdminUsers();setAdminMsg("");}} style={{background:"transparent",border:"1px solid "+G.mint,borderRadius:6,padding:"4px 10px",color:G.mint,fontSize:11,cursor:"pointer"}}>{t.admin}</button>}
           <button onClick={doLogout} style={{background:"transparent",border:"1px solid "+G.grey,borderRadius:6,padding:"4px 10px",color:G.grey,fontSize:11,cursor:"pointer"}}>{t.logout}</button>
