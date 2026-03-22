@@ -7,7 +7,7 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { users, projects, profiles } = require("./db");
+const { users, projects, presentations, profiles } = require("./db");
 
 const app = express();
 app.use(cors());
@@ -99,18 +99,18 @@ app.delete("/api/auth/me", (req, res) => {
   res.json({ message: "Tili poistettu" });
 });
 
-// ═══ PROJEKTIT ═══
+// ═══ PROJEKTIT (nimi + jaettu konteksti) ═══
 app.get("/api/projects", (req, res) => {
   const list = projects.getByUser.all(req.userId);
   res.json({ projects: list });
 });
 
 app.post("/api/projects", (req, res) => {
-  const { name, description, focusType, stateJson } = req.body;
+  const { name, description, contextJson } = req.body;
   if (!name) return res.status(400).json({ error: "Nimi puuttuu" });
   try {
-    const result = projects.create.run(req.userId, name.trim(), description || "", focusType || "", JSON.stringify(stateJson || {}));
-    res.json({ id: result.lastInsertRowid, message: "Projekti tallennettu" });
+    const result = projects.create.run(req.userId, name.trim(), description || "", JSON.stringify(contextJson || {}));
+    res.json({ id: result.lastInsertRowid, message: "Projekti luotu" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -119,17 +119,19 @@ app.post("/api/projects", (req, res) => {
 app.get("/api/projects/:id", (req, res) => {
   const project = projects.getById.get(req.params.id, req.userId);
   if (!project) return res.status(404).json({ error: "Projektia ei löydy" });
-  project.state_json = JSON.parse(project.state_json || "{}");
-  res.json({ project });
+  project.context_json = JSON.parse(project.context_json || "{}");
+  // Hae myös esitykset
+  const preslist = presentations.getByProject.all(req.params.id, req.userId);
+  res.json({ project, presentations: preslist });
 });
 
 app.put("/api/projects/:id", (req, res) => {
-  const { name, description, focusType, stateJson } = req.body;
+  const { name, description, contextJson } = req.body;
   const existing = projects.getById.get(req.params.id, req.userId);
   if (!existing) return res.status(404).json({ error: "Projektia ei löydy" });
   projects.update.run(
     name || existing.name, description ?? existing.description,
-    focusType ?? existing.focus_type, JSON.stringify(stateJson || JSON.parse(existing.state_json || "{}")),
+    JSON.stringify(contextJson || JSON.parse(existing.context_json || "{}")),
     req.params.id, req.userId
   );
   res.json({ message: "Projekti päivitetty" });
@@ -138,6 +140,53 @@ app.put("/api/projects/:id", (req, res) => {
 app.delete("/api/projects/:id", (req, res) => {
   projects.delete.run(req.params.id, req.userId);
   res.json({ message: "Projekti poistettu" });
+});
+
+// ═══ ESITYKSET (projektin alla) ═══
+app.get("/api/projects/:pid/presentations", (req, res) => {
+  const list = presentations.getByProject.all(req.params.pid, req.userId);
+  res.json({ presentations: list });
+});
+
+app.post("/api/projects/:pid/presentations", (req, res) => {
+  const { name, focusType, stateJson } = req.body;
+  if (!name) return res.status(400).json({ error: "Nimi puuttuu" });
+  // Varmista että projekti on käyttäjän
+  const proj = projects.getById.get(req.params.pid, req.userId);
+  if (!proj) return res.status(404).json({ error: "Projektia ei löydy" });
+  try {
+    const result = presentations.create.run(parseInt(req.params.pid), req.userId, name.trim(), focusType || "", JSON.stringify(stateJson || {}));
+    res.json({ id: result.lastInsertRowid, message: "Esitys luotu" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/presentations/:id", (req, res) => {
+  const pres = presentations.getById.get(req.params.id, req.userId);
+  if (!pres) return res.status(404).json({ error: "Esitystä ei löydy" });
+  pres.state_json = JSON.parse(pres.state_json || "{}");
+  // Hae myös projektin jaettu konteksti
+  const proj = projects.getById.get(pres.project_id, req.userId);
+  const context = proj ? JSON.parse(proj.context_json || "{}") : {};
+  res.json({ presentation: pres, projectContext: context, projectName: proj?.name || "" });
+});
+
+app.put("/api/presentations/:id", (req, res) => {
+  const { name, focusType, stateJson } = req.body;
+  const existing = presentations.getById.get(req.params.id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Esitystä ei löydy" });
+  presentations.update.run(
+    name || existing.name, focusType ?? existing.focus_type,
+    JSON.stringify(stateJson || JSON.parse(existing.state_json || "{}")),
+    req.params.id, req.userId
+  );
+  res.json({ message: "Esitys päivitetty" });
+});
+
+app.delete("/api/presentations/:id", (req, res) => {
+  presentations.delete.run(req.params.id, req.userId);
+  res.json({ message: "Esitys poistettu" });
 });
 
 // ═══ AGENTTIPROFIILIT ═══

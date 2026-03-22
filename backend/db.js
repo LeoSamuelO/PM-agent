@@ -29,10 +29,22 @@ db.exec(`
     user_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
+    context_json TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS presentations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
     focus_type TEXT DEFAULT '',
     state_json TEXT DEFAULT '{}',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -46,6 +58,40 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `);
+
+// ═══ MIGRAATIO: Vanha projects-taulu → uusi rakenne ═══
+// Tarkista onko vanha rakenne (state_json + focus_type projects-taulussa)
+try {
+  const cols = db.prepare("PRAGMA table_info(projects)").all().map(c => c.name);
+  if (cols.includes("state_json") && cols.includes("focus_type")) {
+    console.log("🔄 Migrating old projects to new structure...");
+    // Lisää context_json jos puuttuu
+    if (!cols.includes("context_json")) {
+      db.exec("ALTER TABLE projects ADD COLUMN context_json TEXT DEFAULT '{}'");
+    }
+    // Siirrä vanhat projektit: jokainen vanha projekti → yksi esitys
+    const oldProjects = db.prepare("SELECT * FROM projects WHERE state_json IS NOT NULL AND state_json != '{}'").all();
+    for (const p of oldProjects) {
+      try {
+        // Tarkista ettei esitystä ole jo luotu tälle projektille
+        const existing = db.prepare("SELECT id FROM presentations WHERE project_id = ?").get(p.id);
+        if (!existing) {
+          const state = JSON.parse(p.state_json || "{}");
+          // Tallenna jaettu konteksti projektille
+          const ctx = { summary: state.summary || "", docContext: state.docContext || "", decisions: state.decisions || [] };
+          db.prepare("UPDATE projects SET context_json = ? WHERE id = ?").run(JSON.stringify(ctx), p.id);
+          // Luo esitys vanhasta datasta
+          db.prepare("INSERT INTO presentations (project_id, user_id, name, focus_type, state_json) VALUES (?, ?, ?, ?, ?)").run(
+            p.id, p.user_id, p.name, p.focus_type || "", p.state_json
+          );
+        }
+      } catch (e) { console.warn("Migration skipped for project", p.id, e.message); }
+    }
+    // Poista vanhat sarakkeet luomalla uusi taulu (SQLite ei tue DROP COLUMN vanhemmissa versioissa)
+    // Jätetään vanhat sarakkeet paikalleen — ei haittaa, presentations-taulu on uusi lähde
+    console.log("✅ Migration complete");
+  }
+} catch (e) { console.warn("Migration check:", e.message); }
 
 // ═══ PREPARED STATEMENTS ═══
 
@@ -74,21 +120,38 @@ const resetPassword = db.prepare(
   "UPDATE users SET password_hash = ? WHERE id = ?"
 );
 
-// -- Projects --
+// -- Projects (nyt kevyempi: nimi + jaettu konteksti) --
 const createProject = db.prepare(
-  "INSERT INTO projects (user_id, name, description, focus_type, state_json) VALUES (?, ?, ?, ?, ?)"
+  "INSERT INTO projects (user_id, name, description, context_json) VALUES (?, ?, ?, ?)"
 );
 const getProjectsByUser = db.prepare(
-  "SELECT id, name, description, focus_type, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC"
+  "SELECT id, name, description, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC"
 );
 const getProjectById = db.prepare(
   "SELECT * FROM projects WHERE id = ? AND user_id = ?"
 );
 const updateProject = db.prepare(
-  "UPDATE projects SET name = ?, description = ?, focus_type = ?, state_json = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+  "UPDATE projects SET name = ?, description = ?, context_json = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
 );
 const deleteProject = db.prepare(
   "DELETE FROM projects WHERE id = ? AND user_id = ?"
+);
+
+// -- Presentations (esitykset projektin alla) --
+const createPresentation = db.prepare(
+  "INSERT INTO presentations (project_id, user_id, name, focus_type, state_json) VALUES (?, ?, ?, ?, ?)"
+);
+const getPresentationsByProject = db.prepare(
+  "SELECT id, project_id, name, focus_type, created_at, updated_at FROM presentations WHERE project_id = ? AND user_id = ? ORDER BY updated_at DESC"
+);
+const getPresentationById = db.prepare(
+  "SELECT * FROM presentations WHERE id = ? AND user_id = ?"
+);
+const updatePresentation = db.prepare(
+  "UPDATE presentations SET name = ?, focus_type = ?, state_json = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+);
+const deletePresentation = db.prepare(
+  "DELETE FROM presentations WHERE id = ? AND user_id = ?"
 );
 
 // -- Agent Profiles --
@@ -112,5 +175,6 @@ module.exports = {
   db,
   users: { create: createUser, getByUsername: getUserByUsername, getById: getUserById, updateLastLogin, getAll: getAllUsers, delete: deleteUser, resetPassword },
   projects: { create: createProject, getByUser: getProjectsByUser, getById: getProjectById, update: updateProject, delete: deleteProject },
+  presentations: { create: createPresentation, getByProject: getPresentationsByProject, getById: getPresentationById, update: updatePresentation, delete: deletePresentation },
   profiles: { create: createProfile, getByUser: getProfilesByUser, getById: getProfileById, update: updateProfile, delete: deleteProfile },
 };

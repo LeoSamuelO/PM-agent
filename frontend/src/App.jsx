@@ -29,6 +29,10 @@ const T = {
     wrongCurrentPw:"Väärä nykyinen salasana",confirmDeleteAccount:"Oletko varma? Kaikki projektisi ja profiilisi poistetaan pysyvästi.",
     accountDeleted:"Tili poistettu.",enterPwToDelete:"Anna salasanasi vahvistaaksesi:",projectName:"Projektin nimi",
     enterProjectName:"Anna projektille nimi",backToMain:"← Takaisin",addProfile:"Lisää agenttiprofiili",
+    presentations:"Esitykset",newPresentation:"Uusi esitys",presentationName:"Esityksen nimi",
+    enterPresentationName:"Anna esitykselle nimi",noPresentations:"Ei esityksiä vielä.",openProject:"Avaa",
+    sharedContext:"Jaettu konteksti",interviewDone:"Haastattelu tehty",interviewNotDone:"Aloita haastattelusta",
+    continuePresentation:"Jatka",deletePresentation:"Poista",
     steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]],
     phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Diarakenne",planning:"📄 Vaihe 5 — Dia",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
     slides:"Diat",redownload:"🚀 Lataa uudelleen",
@@ -61,6 +65,10 @@ const T = {
     wrongCurrentPw:"Wrong current password",confirmDeleteAccount:"Are you sure? All your projects and profiles will be permanently deleted.",
     accountDeleted:"Account deleted.",enterPwToDelete:"Enter your password to confirm:",projectName:"Project name",
     enterProjectName:"Give a name for the project",backToMain:"← Back",addProfile:"Add agent profile",
+    presentations:"Presentations",newPresentation:"New presentation",presentationName:"Presentation name",
+    enterPresentationName:"Name your presentation",noPresentations:"No presentations yet.",openProject:"Open",
+    sharedContext:"Shared context",interviewDone:"Interview completed",interviewNotDone:"Start from interview",
+    continuePresentation:"Continue",deletePresentation:"Delete",
     steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Slide by slide","I propose, you confirm"],["📊","Ready PPTX","Gofore-themed presentation"]],
     phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Slide",review:"👀 Final review",ready:"✅ Done"},
     slides:"Slides",redownload:"🚀 Download again",
@@ -368,10 +376,17 @@ export default function App() {
   const [changePwMsg,setChangePwMsg]=useState("");
   const [deleteAccountPw,setDeleteAccountPw]=useState("");
   const [deleteAccountStep,setDeleteAccountStep]=useState(false);
-  // Project name modal
+  // Project detail view
   const [showNewProjectModal,setShowNewProjectModal]=useState(false);
   const [newProjectName,setNewProjectName]=useState("");
   const currentProjectNameRef=useRef("");
+  const [currentPresentationId,setCurrentPresentationId]=useState(null);
+  const [projectPresentations,setProjectPresentations]=useState([]);
+  const [projectContext,setProjectContext]=useState({});
+  const projectContextRef=useRef({});
+  // New presentation modal
+  const [showNewPresModal,setShowNewPresModal]=useState(false);
+  const [newPresName,setNewPresName]=useState("");
 
   const bottom=useRef();const fileInput=useRef();
   const collectedRef=useRef({});const proposingRef=useRef(false);
@@ -1070,7 +1085,8 @@ export default function App() {
   async function loadProjects(){
     try{const r=await fetch(API+"/api/projects",{headers:authHeaders()});if(r.ok){const d=await r.json();setMyProjects(d.projects||[]);}}catch{}
   }
-  async function saveProject(nameOverride){
+  // Tallenna esityksen tila (presentation-tasolle)
+  async function saveProject(){
     setSavingProject(true);
     const state={
       screen:screenRef.current,slides:slidesRef.current,slideIdx:slideIdxRef.current,
@@ -1079,25 +1095,49 @@ export default function App() {
       docContext:docContextRef.current?.substring(0,3000),focus:focusTypeRef.current,
       proposals:lastProposalRef.current,msgs:msgs.slice(-50),profileId:activeProfileRef.current?.id||null,
     };
-    const titleSlide=slidesRef.current.find(s=>s.layout==="title");
-    const autoName=titleSlide&&collectedRef.current[titleSlide.id]?.title?collectedRef.current[titleSlide.id].title:(currentProjectNameRef.current||focusTypeRef.current||"Projekti");
-    const name=nameOverride||autoName;
+    // Tallenna jaettu konteksti projektille
+    const ctx={summary:summaryRef.current||"",docContext:docContextRef.current?.substring(0,3000)||"",decisions:decisionsRef.current||[]};
     try{
+      // Päivitä projektin jaettu konteksti
       if(currentProjectId){
-        await fetch(API+"/api/projects/"+currentProjectId,{method:"PUT",headers:authHeaders(),body:JSON.stringify({name,focusType:focusTypeRef.current,stateJson:state})});
-      }else{
-        const r=await fetch(API+"/api/projects",{method:"POST",headers:authHeaders(),body:JSON.stringify({name,focusType:focusTypeRef.current,stateJson:state})});
-        const d=await r.json();if(d.id)setCurrentProjectId(d.id);
+        await fetch(API+"/api/projects/"+currentProjectId,{method:"PUT",headers:authHeaders(),
+          body:JSON.stringify({contextJson:ctx})});
+      }
+      // Tallenna/päivitä esitys
+      const titleSlide=slidesRef.current.find(s=>s.layout==="title");
+      const autoName=titleSlide&&collectedRef.current[titleSlide.id]?.title?collectedRef.current[titleSlide.id].title:(focusTypeRef.current||"Esitys");
+      if(currentPresentationId){
+        await fetch(API+"/api/presentations/"+currentPresentationId,{method:"PUT",headers:authHeaders(),
+          body:JSON.stringify({name:autoName,focusType:focusTypeRef.current,stateJson:state})});
+      }else if(currentProjectId){
+        const r=await fetch(API+"/api/projects/"+currentProjectId+"/presentations",{method:"POST",headers:authHeaders(),
+          body:JSON.stringify({name:autoName,focusType:focusTypeRef.current,stateJson:state})});
+        const d=await r.json();if(d.id)setCurrentPresentationId(d.id);
       }
       loadProjects();
     }catch{}
     setSavingProject(false);
   }
-  async function loadProject(id){
+  // Avaa projektin sivu (esitykset + konteksti)
+  async function openProject(id){
     try{
       const r=await fetch(API+"/api/projects/"+id,{headers:authHeaders()});
-      if(!r.ok)return;const d=await r.json();const s=d.project.state_json;
+      if(!r.ok)return;const d=await r.json();
       setCurrentProjectId(id);
+      currentProjectNameRef.current=d.project.name;
+      setProjectPresentations(d.presentations||[]);
+      setProjectContext(d.project.context_json||{});
+      projectContextRef.current=d.project.context_json||{};
+      setScreenSync("project");
+    }catch(e){console.error("Open project failed:",e);}
+  }
+  // Lataa yksittäinen esitys
+  async function loadPresentation(id){
+    try{
+      const r=await fetch(API+"/api/presentations/"+id,{headers:authHeaders()});
+      if(!r.ok)return;const d=await r.json();const s=d.presentation.state_json;
+      setCurrentPresentationId(id);
+      currentProjectNameRef.current=d.projectName||"";
       slidesRef.current=s.slides||[];setSlides(s.slides||[]);
       collectedRef.current=s.collected||{};
       summaryRef.current=s.summary||"";decisionsRef.current=s.decisions||[];
@@ -1107,20 +1147,69 @@ export default function App() {
       setStatuses(s.statuses||{});setSlideIdxSync(s.slideIdx||0);
       // Palauta profiili jos oli valittuna
       if(s.profileId){const p=myProfiles.find(pr=>pr.id===s.profileId);if(p){setActiveProfile(p);activeProfileRef.current=p;}}
-      // Palauta viestit
-      if(s.msgs?.length>0)setMsgs(s.msgs);
-      else{
+      // Palauta viestit JA näyttö oikeaan tilaan
+      if(s.msgs?.length>0){
+        setMsgs(s.msgs);
+        // Palautetaan TÄSMÄLLEEN samaan vaiheeseen — ei kysytä uudelleen
+        setScreenSync(s.screen==="ready"?"review":(s.screen||"review"));
+      }else{
         const fi=langRef.current==="fi";
         const list=(s.slides||[]).map((sl,i)=>`${i+1}. ${sl.icon||"📄"} ${sl.label}`).join("\n");
         const doneCount=Object.values(s.statuses||{}).filter(v=>v==="done").length;
-        setMsgs([{type:"divider",content:fi?"📂 Projekti ladattu":"📂 Project loaded"},
-          {role:"assistant",content:(fi?`Ladattu: ${d.project.name}\n${doneCount}/${(s.slides||[]).length} diaa valmiina.\n\n${list}`:`Loaded: ${d.project.name}\n${doneCount}/${(s.slides||[]).length} slides done.\n\n${list}`)}]);
+        setMsgs([{type:"divider",content:fi?"📂 Esitys ladattu":"📂 Presentation loaded"},
+          {role:"assistant",content:(fi?`Ladattu: ${d.presentation.name}\n${doneCount}/${(s.slides||[]).length} diaa valmiina.\n\n${list}`:`Loaded: ${d.presentation.name}\n${doneCount}/${(s.slides||[]).length} slides done.\n\n${list}`)}]);
+        setScreenSync(s.screen==="ready"?"review":(s.screen||"review"));
       }
-      setScreenSync(s.screen==="ready"?"review":(s.screen||"review"));
-    }catch(e){console.error("Load project failed:",e);}
+    }catch(e){console.error("Load presentation failed:",e);}
   }
   async function deleteProject(id){
-    try{await fetch(API+"/api/projects/"+id,{method:"DELETE",headers:authHeaders()});loadProjects();if(currentProjectId===id)setCurrentProjectId(null);}catch{}
+    try{await fetch(API+"/api/projects/"+id,{method:"DELETE",headers:authHeaders()});loadProjects();if(currentProjectId===id){setCurrentProjectId(null);setScreenSync("intro");}}catch{}
+  }
+  async function deletePresentation(id){
+    try{await fetch(API+"/api/presentations/"+id,{method:"DELETE",headers:authHeaders()});
+      if(currentProjectId)openProject(currentProjectId);
+      if(currentPresentationId===id)setCurrentPresentationId(null);
+    }catch{}
+  }
+  // Luo uusi projekti ja avaa sen sivu
+  async function createAndOpenProject(name){
+    setShowNewProjectModal(false);
+    try{
+      const r=await fetch(API+"/api/projects",{method:"POST",headers:authHeaders(),body:JSON.stringify({name:name.trim()})});
+      const d=await r.json();
+      if(d.id){
+        setCurrentProjectId(d.id);
+        currentProjectNameRef.current=name.trim();
+        setProjectPresentations([]);
+        setProjectContext({});
+        projectContextRef.current={};
+        loadProjects();
+        setScreenSync("project");
+      }
+    }catch(e){console.error("Create project failed:",e);}
+  }
+  // Aloita uusi esitys projektin kontekstilla
+  function startNewPresentation(presName){
+    setCurrentPresentationId(null);
+    // Lataa projektin jaettu konteksti
+    const ctx=projectContextRef.current||{};
+    if(ctx.summary){summaryRef.current=ctx.summary;}
+    if(ctx.docContext){docContextRef.current=ctx.docContext;setDocContext(ctx.docContext);}
+    if(ctx.decisions?.length){decisionsRef.current=ctx.decisions;}
+    // Jos konteksti on olemassa, ohita haastattelu → mene fokukseen
+    if(ctx.summary||ctx.docContext){
+      setScreenSync("focus");
+      const fi=langRef.current==="fi";
+      setMsgs([
+        {type:"divider",content:fi?"📂 "+currentProjectNameRef.current:"📂 "+currentProjectNameRef.current},
+        {role:"assistant",content:fi
+          ?"Projektin materiaalit ladattu! Valitse tämän esityksen fokus:\n1. 📋 Yleinen projektisuunnitelma\n2. ⚠️ Riskianalyysi\n3. 📅 Aikataulukatsaus\n4. 🚀 Kickoff\n5. 👥 Sidosryhmäraportti\n6. 🔍 Muu"
+          :"Project materials loaded! Choose this presentation's focus:\n1. 📋 General project plan\n2. ⚠️ Risk analysis\n3. 📅 Timeline overview\n4. 🚀 Kickoff\n5. 👥 Stakeholder report\n6. 🔍 Other"}
+      ]);
+    }else{
+      // Ei kontekstia — aloita normaalisti haastattelusta
+      startInterview(presName);
+    }
   }
 
   // ═══ PROFIILIEN HALLINTA ═══
@@ -1166,6 +1255,11 @@ export default function App() {
     }catch{setChangePwMsg("Yhteysvirhe");}
   }
   function goBackToIntro(){
+    // Jos ollaan esityksessä ja projektissa, palaa projekti-sivulle
+    if(currentProjectId&&currentPresentationId){
+      openProject(currentProjectId);
+      return;
+    }
     setScreenSync("intro");
   }
 
@@ -1251,9 +1345,9 @@ export default function App() {
       {myProjects.map(p=><div key={p.id} style={{...cardStyle,display:"flex",alignItems:"center",gap:10}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{color:G.white,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-          <div style={{color:G.grey,fontSize:11}}>{p.focus_type&&<span>{p.focus_type} · </span>}{new Date(p.updated_at+"Z").toLocaleDateString()}</div>
+          <div style={{color:G.grey,fontSize:11}}>{new Date(p.updated_at+"Z").toLocaleDateString()}</div>
         </div>
-        <button onClick={()=>loadProject(p.id)} style={smallBtn(G.digitalBlue,G.white)}>{t.continueProject}</button>
+        <button onClick={()=>openProject(p.id)} style={smallBtn(G.digitalBlue,G.white)}>{t.openProject}</button>
         <button onClick={()=>{if(confirm(t.deleteConfirm))deleteProject(p.id);}} style={smallBtn("",G.orange)}>{t.deleteProject}</button>
       </div>)}
     </div>}
@@ -1281,10 +1375,10 @@ export default function App() {
       <div style={{background:G.white,borderRadius:16,padding:28,width:400,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
         <h3 style={{margin:"0 0 16px",color:G.deepBlue}}>{t.enterProjectName}</h3>
         <input type="text" value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} placeholder={t.projectName}
-          onKeyDown={e=>{if(e.key==="Enter"&&newProjectName.trim()){setShowNewProjectModal(false);clearSession();setShowRecover(false);setCurrentProjectId(null);startInterview(newProjectName.trim());}}}
+          onKeyDown={e=>{if(e.key==="Enter"&&newProjectName.trim())createAndOpenProject(newProjectName.trim());}}
           style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:14,marginBottom:14,boxSizing:"border-box",outline:"none"}} autoFocus/>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{if(newProjectName.trim()){setShowNewProjectModal(false);clearSession();setShowRecover(false);setCurrentProjectId(null);startInterview(newProjectName.trim());}}}
+          <button onClick={()=>{if(newProjectName.trim())createAndOpenProject(newProjectName.trim());}}
             disabled={!newProjectName.trim()}
             style={{flex:1,background:newProjectName.trim()?G.orange:G.silver,color:G.white,border:"none",borderRadius:8,padding:"10px 0",fontWeight:700,cursor:newProjectName.trim()?"pointer":"not-allowed"}}>{t.start}</button>
           <button onClick={()=>setShowNewProjectModal(false)} style={{flex:1,background:G.light,color:G.deepBlue,border:"none",borderRadius:8,padding:"10px 0",fontWeight:600,cursor:"pointer"}}>{t.close}</button>
@@ -1377,6 +1471,55 @@ export default function App() {
       </div>
     </div>}
   </div></div>);
+  }
+
+  // ═══ PROJEKTI-SIVU ═══
+  if(screen==="project"){
+    const cardStyle={background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:16,marginBottom:8,textAlign:"left"};
+    const sectionTitle={color:G.white,fontSize:14,fontWeight:700,marginBottom:10};
+    const smallBtn=(bg,clr)=>({background:bg||"transparent",border:"1px solid "+(clr||G.grey),borderRadius:6,padding:"4px 10px",color:clr||G.grey,fontSize:11,cursor:"pointer",fontWeight:600});
+    const hasContext=!!(projectContext.summary||projectContext.docContext);
+    return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'Segoe UI',sans-serif"}}><div style={{maxWidth:560,width:"100%",textAlign:"center"}}>
+      <button onClick={()=>setScreenSync("intro")} style={{...smallBtn("",G.codeBlue),marginBottom:20,fontSize:12}}>{t.backToMain}</button>
+      <div style={{width:56,height:56,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:G.white,fontWeight:700,margin:"0 auto 16px"}}>G</div>
+      <h2 style={{color:G.white,fontSize:22,fontWeight:700,margin:"0 0 6px"}}>{currentProjectNameRef.current}</h2>
+      <div style={{color:hasContext?G.mint:G.grey,fontSize:12,marginBottom:20}}>{hasContext?("✓ "+t.interviewDone):t.interviewNotDone}</div>
+
+      {/* Uusi esitys */}
+      <button onClick={()=>{setNewPresName("");setShowNewPresModal(true);}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:20}}>
+        + {t.newPresentation}
+      </button>
+
+      {/* Esityslista */}
+      {projectPresentations.length>0?<div style={{marginBottom:20}}>
+        <div style={sectionTitle}>{t.presentations}</div>
+        {projectPresentations.map(p=><div key={p.id} style={{...cardStyle,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:G.white,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+            <div style={{color:G.grey,fontSize:11}}>{p.focus_type&&<span>{p.focus_type} · </span>}{new Date(p.updated_at+"Z").toLocaleDateString()}</div>
+          </div>
+          <button onClick={()=>loadPresentation(p.id)} style={smallBtn(G.digitalBlue,G.white)}>{t.continuePresentation}</button>
+          <button onClick={()=>{if(confirm(t.deleteConfirm))deletePresentation(p.id);}} style={smallBtn("",G.orange)}>{t.deletePresentation}</button>
+        </div>)}
+      </div>
+      :<div style={{color:G.grey,fontSize:13,fontStyle:"italic",marginBottom:20}}>{t.noPresentations}</div>}
+
+      {/* Uusi esitys -modaali */}
+      {showNewPresModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowNewPresModal(false);}}>
+        <div style={{background:G.white,borderRadius:16,padding:28,width:400,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+          <h3 style={{margin:"0 0 16px",color:G.deepBlue}}>{t.enterPresentationName}</h3>
+          <input type="text" value={newPresName} onChange={e=>setNewPresName(e.target.value)} placeholder={t.presentationName}
+            onKeyDown={e=>{if(e.key==="Enter"&&newPresName.trim()){setShowNewPresModal(false);startNewPresentation(newPresName.trim());}}}
+            style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:14,marginBottom:14,boxSizing:"border-box",outline:"none"}} autoFocus/>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{if(newPresName.trim()){setShowNewPresModal(false);startNewPresentation(newPresName.trim());}}}
+              disabled={!newPresName.trim()}
+              style={{flex:1,background:newPresName.trim()?G.orange:G.silver,color:G.white,border:"none",borderRadius:8,padding:"10px 0",fontWeight:700,cursor:newPresName.trim()?"pointer":"not-allowed"}}>{t.start}</button>
+            <button onClick={()=>setShowNewPresModal(false)} style={{flex:1,background:G.light,color:G.deepBlue,border:"none",borderRadius:8,padding:"10px 0",fontWeight:600,cursor:"pointer"}}>{t.close}</button>
+          </div>
+        </div>
+      </div>}
+    </div></div>);
   }
 
   const phaseText=(()=>{if(screen==="planning"&&slides.length>0)return t.phases.planning+" "+(slideIdx+1)+"/"+slides.length+(slides[slideIdx]?" — "+slides[slideIdx].label:"");if(screen==="insights"&&focusType)return t.phases.insights+": "+focusType;return t.phases[screen]||"";})();
