@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const Anthropic = require("@anthropic-ai/sdk");
 const path = require("path");
 const fs = require("fs");
@@ -10,9 +11,40 @@ const jwt = require("jsonwebtoken");
 const { users, projects, presentations, profiles } = require("./db");
 
 const app = express();
-app.use(cors());
+
+// ═══ CORS: salli vain oma frontend ═══
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "https://pmagents.app,https://www.pmagents.app,http://localhost:5173").split(",");
+app.use(cors({
+  origin: function(origin, callback) {
+    // Salli pyyntö ilman originia (esim. curl, Render health check)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error("CORS: origin not allowed: " + origin));
+  }
+}));
 app.use(express.json({ limit: "10mb" }));
 
+// ═══ RATE LIMITING ═══
+// Chat API: 15 pyyntöä/min per IP (Anthropic-kutsut ovat kalliita)
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 15,
+  message: { error: "Liian monta pyyntöä — odota hetki." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+// Auth: 10 yritystä/min (estää brute force)
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: "Liian monta kirjautumisyritystä." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+if (!process.env.APP_PASSWORD) {
+  console.warn("⚠️  APP_PASSWORD ei ole asetettu! Käytetään oletusta vain kehityksessä.");
+}
 const ACCESS_KEY = process.env.APP_PASSWORD || "AgenttiTestaus123";
 const JWT_SECRET = process.env.JWT_SECRET || require("crypto").randomBytes(64).toString("hex");
 
@@ -36,7 +68,7 @@ app.use(authMiddleware);
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ═══ REKISTERÖINTI (vaatii avaimen) ═══
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/register", authLimiter, (req, res) => {
   const { username, password, accessKey } = req.body;
   if (!username || !password || !accessKey) return res.status(400).json({ error: "Täytä kaikki kentät" });
   if (accessKey !== ACCESS_KEY) return res.status(401).json({ error: "Väärä avain" });
@@ -57,7 +89,7 @@ app.post("/api/auth/register", (req, res) => {
 });
 
 // ═══ KIRJAUTUMINEN (ei vaadi avainta) ═══
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", authLimiter, (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: "Täytä kaikki kentät" });
   const user = users.getByUsername.get(username.trim());
@@ -353,9 +385,15 @@ app.post("/api/verify-numbers", (req, res) => {
   });
 });
 
-app.post("/api/extract-file", async (req, res) => {
+app.post("/api/extract-file", chatLimiter, async (req, res) => {
   const { base64, mimeType, fileName } = req.body;
   if (!base64 || !mimeType) return res.status(400).json({ error: "puuttuu" });
+  // Tiedostokokorajoitus: ~10MB (base64 on ~33% isompi kuin alkuperäinen)
+  const MAX_BASE64_SIZE = 14 * 1024 * 1024; // ~10MB tiedosto base64-koodattuna
+  if (base64.length > MAX_BASE64_SIZE) return res.status(413).json({ error: "Tiedosto liian suuri (max 10MB)" });
+  // Sallitut tiedostotyypit
+  const ALLOWED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"];
+  if (!ALLOWED_TYPES.includes(mimeType)) return res.status(400).json({ error: "Tiedostotyyppi ei tuettu: " + mimeType });
   try {
     const block = mimeType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
@@ -368,7 +406,7 @@ app.post("/api/extract-file", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", chatLimiter, async (req, res) => {
   const { messages, system, useSearch } = req.body;
   if (!messages?.length) return res.status(400).json({ error: "messages puuttuu" });
   try {

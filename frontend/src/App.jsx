@@ -1,6 +1,29 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Component } from "react";
 
-const API = "https://pm-agent-avpl.onrender.com";
+const API = import.meta.env.VITE_API_URL || "https://pm-agent-avpl.onrender.com";
+
+// ═══ ERROR BOUNDARY ═══
+class ErrorBoundary extends Component {
+  constructor(props){super(props);this.state={hasError:false,error:null};}
+  static getDerivedStateFromError(error){return{hasError:true,error};}
+  componentDidCatch(error,info){console.error("ErrorBoundary:",error,info);}
+  render(){
+    if(this.state.hasError){
+      return(<div style={{minHeight:"100vh",background:"#0C2340",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',sans-serif"}}>
+        <div style={{textAlign:"center",color:"#fff",maxWidth:420,padding:32}}>
+          <div style={{fontSize:48,marginBottom:16}}>⚠️</div>
+          <h2 style={{margin:"0 0 12px",fontSize:20}}>Jokin meni pieleen</h2>
+          <p style={{color:"#8C9BAA",fontSize:14,marginBottom:20}}>{this.state.error?.message||"Tuntematon virhe"}</p>
+          <button onClick={()=>{this.setState({hasError:false,error:null});window.location.reload();}}
+            style={{background:"#E8521A",color:"#fff",border:"none",borderRadius:10,padding:"12px 32px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+            Lataa sivu uudelleen
+          </button>
+        </div>
+      </div>);
+    }
+    return this.props.children;
+  }
+}
 const G = {
   deepBlue:"#0C2340",digitalBlue:"#1B6CA8",codeBlue:"#5BA4CF",
   orange:"#E8521A",mint:"#3BBFAD",white:"#FFFFFF",
@@ -342,7 +365,8 @@ function Bubble({role,content}){const ai=role==="assistant";return(<div style={{
 function Pill({slide,status}){const cfg={pending:{bg:G.light,border:G.silver,color:G.grey,sub:""},proposing:{bg:"#FFF3EE",border:G.orange,color:G.orange,sub:"Ehdotettu"},confirming:{bg:"#E8F4FB",border:G.digitalBlue,color:G.digitalBlue,sub:"Odottaa"},done:{bg:"#E8FAF7",border:G.mint,color:G.mint,sub:"✓ Sovittu"}}[status]||{bg:G.light,border:G.silver,color:G.grey,sub:""};return(<div style={{background:cfg.bg,border:"1.5px solid "+cfg.border,borderRadius:10,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:15}}>{slide.icon||"📄"}</span><div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:cfg.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{slide.label}</div>{cfg.sub&&<div style={{fontSize:10,color:cfg.color,opacity:0.8}}>{cfg.sub}</div>}</div><div style={{width:7,height:7,borderRadius:"50%",background:cfg.border,flexShrink:0}}/></div>);}
 
 // ═══ PÄÄKOMPONENTTI ═══
-export default function App() {
+export default function AppWithErrorBoundary(){return <ErrorBoundary><App/></ErrorBoundary>;}
+function App() {
   const [screen,setScreen]=useState("intro");
   const [lang,setLangState]=useState(localStorage.getItem("pm_lang")||"fi");
   const setLang=(l)=>{setLangState(l);localStorage.setItem("pm_lang",l);langRef.current=l;};
