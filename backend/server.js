@@ -46,18 +46,11 @@ app.post("/api/auth/register", (req, res) => {
   if (existing) return res.status(409).json({ error: "Käyttäjänimi on jo käytössä" });
   try {
     const hash = bcrypt.hashSync(password, 12);
-    // Ensimmäinen käyttäjä → admin automaattisesti
-    const allUsers = users.getAll.all();
-    const isFirst = allUsers.length === 0;
     const result = users.create.run(username.trim(), hash);
     const userId = result.lastInsertRowid;
-    if (isFirst) {
-      const { db } = require("./db");
-      db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(userId);
-    }
     users.updateLastLogin.run(userId);
     const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: "8h" });
-    res.json({ token, user: { id: userId, username: username.trim(), is_admin: isFirst ? 1 : 0 } });
+    res.json({ token, user: { id: userId, username: username.trim(), is_admin: 0 } });
   } catch (err) {
     res.status(500).json({ error: "Rekisteröinti epäonnistui" });
   }
