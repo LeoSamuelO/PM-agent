@@ -13,6 +13,16 @@ const db = new Database(path.join(DB_DIR, "pm_agent.db"));
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
+// ═══ MIGRAATIO: poista vanha skeema jos sarakkeet eivät täsmää ═══
+try {
+  const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (cols.length > 0 && !cols.includes("username")) {
+    // Vanha skeema (email-pohjainen) — pudota ja luo uudelleen
+    db.exec("DROP TABLE IF EXISTS agent_profiles; DROP TABLE IF EXISTS projects; DROP TABLE IF EXISTS users;");
+    console.log("🔄 Vanha tietokanta nollattu (skeema muuttunut)");
+  }
+} catch (e) { /* taulu ei vielä ole olemassa — OK */ }
+
 // ═══ SKEEMA ═══
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
