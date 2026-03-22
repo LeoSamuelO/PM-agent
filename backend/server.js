@@ -430,6 +430,101 @@ app.post("/api/build-pptx", async (req, res) => {
   }
 });
 
+// ═══ WORD (DOCX) BUILD ═══
+app.post("/api/build-docx", async (req, res) => {
+  const { slideData, slideStructure, lang } = req.body;
+  if (!slideData || !slideStructure?.length) return res.status(400).json({ error: "Data puuttuu" });
+
+  for (const sd of slideStructure) {
+    if (!slideData[sd.id]) slideData[sd.id] = getDefaultDocx(sd);
+  }
+
+  const titleChapter = slideStructure.find(s => s.layout === "title");
+  const titleData = titleChapter ? slideData[titleChapter.id] : {};
+  const projectName = (titleData.title || "document")
+    .replace(/[^a-zäöåA-ZÄÖÅ0-9\s-]/g, "").trim().replace(/\s+/g, "_").substring(0, 50);
+  const fileName = projectName + ".docx";
+
+  const outPath = path.join(__dirname, "docx_" + Date.now() + ".docx");
+  const script = path.join(__dirname, "build_docx.py");
+
+  console.log("📁 DOCX Script:", script, "exists:", fs.existsSync(script));
+
+  if (fs.existsSync(script)) {
+    try {
+      const pythonCmd = await findPython();
+      if (pythonCmd) {
+        console.log("🐍 Python (docx):", pythonCmd);
+        await runPythonDocx(pythonCmd, script, JSON.stringify({ slideData, slideStructure, lang: lang || "fi" }), outPath);
+
+        if (fs.existsSync(outPath)) {
+          console.log("✅ Gofore DOCX OK");
+          return res.download(outPath, fileName, () => fs.unlink(outPath, () => {}));
+        }
+      }
+    } catch (e) {
+      console.error("❌ Python DOCX epäonnistui:", e.message);
+      fs.unlink(outPath, () => {});
+    }
+  }
+
+  res.status(500).json({ error: "Word-dokumentin luonti epäonnistui" });
+});
+
+function runPythonDocx(cmd, script, jsonStr, outPath) {
+  return new Promise((resolve, reject) => {
+    const jsonPath = outPath.replace(".docx", ".json");
+    let useTempFile = jsonStr.length > 50000;
+    let args;
+
+    if (useTempFile) {
+      fs.writeFileSync(jsonPath, jsonStr, "utf-8");
+      args = [script, "--file", jsonPath, outPath];
+      console.log("📦 Python DOCX via temp file:", jsonStr.length, "bytes");
+    } else {
+      args = [script, "--stdin", outPath];
+    }
+
+    const proc = spawn(cmd, args, {
+      cwd: path.dirname(script),
+      timeout: 60000,
+    });
+
+    let stdout = "", stderr = "";
+    proc.stdout.on("data", d => stdout += d);
+    proc.stderr.on("data", d => stderr += d);
+
+    proc.on("close", code => {
+      if (useTempFile) fs.unlink(jsonPath, () => {});
+      console.log("Python DOCX exit:", code, "stdout:", stdout.trim());
+      if (stderr) console.error("Python DOCX stderr:", stderr.trim());
+      code === 0 ? resolve(stdout) : reject(new Error(stderr || "exit " + code));
+    });
+    proc.on("error", (err) => {
+      if (useTempFile) fs.unlink(jsonPath, () => {});
+      reject(err);
+    });
+
+    if (!useTempFile) {
+      proc.stdin.on("error", () => {});
+      proc.stdin.write(jsonStr);
+      proc.stdin.end();
+    }
+  });
+}
+
+function getDefaultDocx(sd) {
+  const layout = sd.layout || "text";
+  const defaults = {
+    title: { title: sd.label || "", tagline: "", meta: "" },
+    text: { heading: sd.label || "", content: "—" },
+    table: { heading: sd.label || "", columns: ["—"], rows: [["—"]] },
+    list: { heading: sd.label || "", items: ["—"], listType: "bullet" },
+    summary: { heading: sd.label || "", content: "—" },
+  };
+  return defaults[layout] || defaults.text;
+}
+
 async function findPython() {
   for (const cmd of ["python3", "python"]) {
     try {

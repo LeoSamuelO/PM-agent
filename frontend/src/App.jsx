@@ -387,6 +387,10 @@ export default function App() {
   // New presentation modal
   const [showNewPresModal,setShowNewPresModal]=useState(false);
   const [newPresName,setNewPresName]=useState("");
+  const currentPresNameRef=useRef("");
+  // Output type: "pptx" or "docx"
+  const [outputType,setOutputType]=useState("pptx");
+  const outputTypeRef=useRef("pptx");
 
   const bottom=useRef();const fileInput=useRef();
   const collectedRef=useRef({});const proposingRef=useRef(false);
@@ -606,13 +610,22 @@ export default function App() {
 
   // ═══ VAIHE 4 ═══
   async function runStructureAsk(){
-    setScreenSync("structure");addDivider("📐 Vaihe 4 — Diarakenne");
+    const isDocx=outputTypeRef.current==="docx";
+    setScreenSync("structure");addDivider(isDocx?"📐 Vaihe 4 — Dokumentin rakenne":"📐 Vaihe 4 — Diarakenne");
     const fi=langRef.current==="fi";
-    const structPrompt=fi
-      ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-15 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin laajuuden mukaan. Max 15 diaa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-OPAS — valitse sisällön perusteella:\n- kpi: korostaa 2-4 avainlukua isolla (€420k, +30%, 2.3v) — toimii tiivistelmänä tai johtopäätöksenä\n- bar_chart: vertailee lukuja vaihtoehtojen välillä (hinnat, kustannukset, resurssit)\n- pie_chart: näyttää miten kokonaisuus jakautuu osiin (budjettierittely, osuudet)\n- line_chart: näyttää kehityksen ajan yli (kustannustrendi, ennuste)\n- table: teksti+luku-yhdistelmä vertailussa (ominaisuusmatriisi, arviointiruudukko). Iso taulukko (8+ riviä) → harkitse jakamista kahdelle dialle\n- gantt: projektin aikataulu ja vaiheet\n- cards: 2-4 korttia joissa otsikko+kuvaus+vakavuus (riskit, haasteet, mahdollisuudet)\n- two-col: rinnakkaisvertailu (nykytila vs. tavoite, pros/cons, vaihtoehto A/B)\n- bullets: puhdas teksti ilman lukuja (toimenpiteet, yhteenveto, seuraavat askeleet)\n\nISO AIHE voi tarvita useamman dian, esim:\n- Toimittajavertailu: hintavertailu (bar_chart) + ominaisuudet (table) + suositus (two-col)\n- Riskianalyysi: yleiskuva (cards) + yksityiskohtainen taulukko (table)\n- Budjetti: kokonaiskuva (kpi) + erittely (bar_chart tai pie_chart)\n- ROI: avainluvut (kpi) + kehitys vuosittain (line_chart)\n\nVaihtele layouteja luontevasti — älä toista samaa turhaan, mutta älä myöskään pakota vaihtelua jos sama layout sopii parhaiten.\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
-      :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-15 slides)** — detailed plan\n\nScale to material scope. Max 15 slides.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT GUIDE — choose based on content:\n- kpi: highlight 2-4 key numbers prominently (€420k, +30%, 2.3y) — works as summary or conclusion\n- bar_chart: compare numbers across options (prices, costs, resources)\n- pie_chart: show how a whole breaks into parts (budget breakdown, market shares)\n- line_chart: show change over time (cost trend, forecast)\n- table: text+number mix in comparison (feature matrix, evaluation grid). Large table (8+ rows) → consider splitting across slides\n- gantt: project timeline and phases\n- cards: 2-4 cards with title+description+severity (risks, challenges, opportunities)\n- two-col: side-by-side comparison (current vs. target, pros/cons, option A/B)\n- bullets: pure text without numbers (actions, summary, next steps)\n\nBIG TOPICS may need multiple slides, e.g.:\n- Vendor comparison: price comparison (bar_chart) + features (table) + recommendation (two-col)\n- Risk analysis: overview (cards) + detailed analysis (table)\n- Budget: overview (kpi) + breakdown (bar_chart or pie_chart)\n- ROI: key numbers (kpi) + trend over years (line_chart)\n\nVary layouts naturally — don't repeat unnecessarily, but don't force variety if the same layout genuinely fits best.\n\nAsk: "Which one, or do you want a specific number of slides?"`;
+    let structPrompt;
+    if(isDocx){
+      // Word-dokumentin lukurakenne
+      structPrompt=fi
+        ?`Ehdota KAKSI lukurakennevaihtoehtoa Word-dokumentille fokuksella "${focusTypeRef.current}":\n**A: Tiivis (4-7 lukua)** — tiivistelmä, johdon lukuun\n**B: Kattava (8-12 lukua)** — yksityiskohtainen dokumentti\n\nMitoita materiaalin laajuuden mukaan. Max 12 lukua.\n\n1. luku AINA: 1. 🎯 Kansilehti - title\nJokainen rivi: numero + emoji + otsikko - tyyppi\n\nLUKUTYYPIT:\n- title: kansilehti (dokumentin nimi, tekijä, pvm)\n- text: tekstikappaleita — yksityiskohtainen sisältö, analyysit, kuvaukset\n- table: taulukko — vertailut, matriisit, kustannuslaskelmat\n- list: numeroidut/bulletoidut listat — toimenpiteet, vaatimukset, suositukset\n- summary: tiivistelmä — avainluvut ja johtopäätökset\n\nWord-dokumentissa PAINOPISTE on TEKSTISSÄ. Jokainen luku sisältää yksityiskohtaisia kappaleita, ei pelkkiä bullet-pointteja.\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän lukuja?"`
+        :`Propose TWO chapter structure options for Word document with focus "${focusTypeRef.current}":\n**A: Compact (4-7 chapters)** — executive summary\n**B: Comprehensive (8-12 chapters)** — detailed document\n\nScale to material. Max 12 chapters.\n\nChapter 1 ALWAYS: 1. 🎯 Cover page - title\nEach row: number + emoji + heading - type\n\nCHAPTER TYPES:\n- title: cover page (doc name, author, date)\n- text: paragraphs — detailed content, analysis, descriptions\n- table: tables — comparisons, matrices, cost calculations\n- list: numbered/bullet lists — actions, requirements, recommendations\n- summary: summary — key figures and conclusions\n\nWord document FOCUSES on TEXT. Each chapter has detailed paragraphs, not just bullet points.\n\nAsk: "Which one, or specific number of chapters?"`;
+    }else{
+      structPrompt=fi
+        ?`Ehdota KAKSI diarakennevaihtoehtoa fokukselle "${focusTypeRef.current}":\n**A: Tiivis (4-7 diaa)** — johtoryhmälle, tiivistelmä\n**B: Kattava (8-15 diaa)** — yksityiskohtainen suunnitelma\n\nMitoita materiaalin laajuuden mukaan. Max 15 diaa.\n\n1. dia AINA: 1. 🎯 Kansi - title\nJokainen rivi: numero + emoji + nimi - layout\n\nLAYOUT-OPAS — valitse sisällön perusteella:\n- kpi: korostaa 2-4 avainlukua isolla (€420k, +30%, 2.3v) — toimii tiivistelmänä tai johtopäätöksenä\n- bar_chart: vertailee lukuja vaihtoehtojen välillä (hinnat, kustannukset, resurssit)\n- pie_chart: näyttää miten kokonaisuus jakautuu osiin (budjettierittely, osuudet)\n- line_chart: näyttää kehityksen ajan yli (kustannustrendi, ennuste)\n- table: teksti+luku-yhdistelmä vertailussa (ominaisuusmatriisi, arviointiruudukko). Iso taulukko (8+ riviä) → harkitse jakamista kahdelle dialle\n- gantt: projektin aikataulu ja vaiheet\n- cards: 2-4 korttia joissa otsikko+kuvaus+vakavuus (riskit, haasteet, mahdollisuudet)\n- two-col: rinnakkaisvertailu (nykytila vs. tavoite, pros/cons, vaihtoehto A/B)\n- bullets: puhdas teksti ilman lukuja (toimenpiteet, yhteenveto, seuraavat askeleet)\n\nISO AIHE voi tarvita useamman dian, esim:\n- Toimittajavertailu: hintavertailu (bar_chart) + ominaisuudet (table) + suositus (two-col)\n- Riskianalyysi: yleiskuva (cards) + yksityiskohtainen taulukko (table)\n- Budjetti: kokonaiskuva (kpi) + erittely (bar_chart tai pie_chart)\n- ROI: avainluvut (kpi) + kehitys vuosittain (line_chart)\n\nVaihtele layouteja luontevasti — älä toista samaa turhaan, mutta älä myöskään pakota vaihtelua jos sama layout sopii parhaiten.\n\nKysy: "Kumpi sopii, vai haluatko tietyn määrän dioja?"`
+        :`Propose TWO slide structure options for "${focusTypeRef.current}":\n**A: Compact (4-7 slides)** — executive summary\n**B: Comprehensive (8-15 slides)** — detailed plan\n\nScale to material scope. Max 15 slides.\n\nSlide 1 ALWAYS: 1. 🎯 Cover - title\nEach row: number + emoji + name - layout\n\nLAYOUT GUIDE — choose based on content:\n- kpi: highlight 2-4 key numbers prominently (€420k, +30%, 2.3y) — works as summary or conclusion\n- bar_chart: compare numbers across options (prices, costs, resources)\n- pie_chart: show how a whole breaks into parts (budget breakdown, market shares)\n- line_chart: show change over time (cost trend, forecast)\n- table: text+number mix in comparison (feature matrix, evaluation grid). Large table (8+ rows) → consider splitting across slides\n- gantt: project timeline and phases\n- cards: 2-4 cards with title+description+severity (risks, challenges, opportunities)\n- two-col: side-by-side comparison (current vs. target, pros/cons, option A/B)\n- bullets: pure text without numbers (actions, summary, next steps)\n\nBIG TOPICS may need multiple slides, e.g.:\n- Vendor comparison: price comparison (bar_chart) + features (table) + recommendation (two-col)\n- Risk analysis: overview (cards) + detailed analysis (table)\n- Budget: overview (kpi) + breakdown (bar_chart or pie_chart)\n- ROI: key numbers (kpi) + trend over years (line_chart)\n\nVary layouts naturally — don't repeat unnecessarily, but don't force variety if the same layout genuinely fits best.\n\nAsk: "Which one, or do you want a specific number of slides?"`;
+    }
 
-    const r=await api([{role:"user",content:structPrompt}],"VAIHE: Diarakenne.\n"+buildContext());
+    const r=await api([{role:"user",content:structPrompt}],(isDocx?"VAIHE: Dokumentin rakenne.\n":"VAIHE: Diarakenne.\n")+buildContext());
     const s=tryParseStructure(strip(r)); if(s)pendingStructRef.current=s;
     addMsg("assistant",strip(r));
   }
@@ -684,7 +697,7 @@ export default function App() {
     setSlides(confirmed);slidesRef.current=confirmed;
     setStatuses(Object.fromEntries(confirmed.map(s=>[s.id,"pending"])));
     setScreenSync("planning");setSlideIdxSync(0);
-    addDivider("📄 Vaihe 5 — Diojen sisällöntuotanto");
+    addDivider(outputTypeRef.current==="docx"?"📄 Vaihe 5 — Lukujen sisällöntuotanto":"📄 Vaihe 5 — Diojen sisällöntuotanto");
     setTimeout(saveSession,50); // Tallenna rakenne heti
     setTimeout(()=>proposeSlide(0,confirmed),100);
   }
@@ -718,14 +731,34 @@ export default function App() {
         bullets:fi?`Ehdota sisältö dialle "${slide.label}".\n\nJos datassa lukuja → EHDOTA taulukkoa, pylväskaaviota tai piirakkakaaviota. Bullet-lista vain kun ei lukuja.\nJokainen bullet = insight, ei pelkkä fakta. LASKE jos lukuja on.`
           :`Propose content for "${slide.label}".\n\nIf data has numbers → SUGGEST table, bar chart or pie chart. Bullets only without numbers.\nEach bullet = insight, not just fact. CALCULATE if numbers exist.`,
       };
-      const prompt=layoutPrompts[slide.layout]||layoutPrompts.bullets;
-      const layoutNote=langRef.current==="fi"
-        ?`\n\nJos taulukko (| sarake1 | sarake2 |) olisi selkeämpi kuin nykyinen layout (${slide.layout}), käytä markdown-taulukkoa — järjestelmä tunnistaa sen automaattisesti. Tarjoa 2 vaihtoehtoa. Kerro kumpi on suosituksesi.`
-        :`\n\nIf a table (| col1 | col2 |) would be clearer than current layout (${slide.layout}), use markdown table — the system detects it automatically. Offer 2 options, state your recommendation.`;
-      const fullPrompt=`[DIA ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}${layoutNote}`;
-      const r=await api([{role:"user",content:fullPrompt}],"VAIHE: Diojen sisältö.\n"+buildContext());
+      // Word-dokumentin sisältöpromptit
+      const isDocx=outputTypeRef.current==="docx";
+      const docxPrompts={
+        title:fi?"Ehdota kansilehden sisältö:\n- Dokumentin otsikko\n- Alaotsikko (1 lause)\n- Tekijä / organisaatio\n- Päivämäärä\n- Versio"
+          :"Propose cover page:\n- Document title\n- Subtitle (1 sentence)\n- Author / organization\n- Date\n- Version",
+        text:fi?`Kirjoita luku "${slide.label}" Word-dokumenttiin.\n\nSÄÄNNÖT:\n- Kirjoita 2-4 yksityiskohtaista kappaletta (ei bullet-listoja)\n- Analysoi ja perustele — älä vain listaa faktoja\n- Jos lukuja → laske ja näytä kaavat\n- Ammattimainen, asiantunteva sävy\n- Ota kantaa ja tee suosituksia\n- Tarjoa 2 vaihtoehtoa. Kerro suosituksesi.`
+          :`Write chapter "${slide.label}" for Word document.\n\nRULES:\n- Write 2-4 detailed paragraphs (NOT bullet lists)\n- Analyze and justify — don't just list facts\n- If numbers → calculate and show formulas\n- Professional, expert tone\n- Take positions and make recommendations\n- Offer 2 options. State your recommendation.`,
+        table:fi?`Kirjoita luku "${slide.label}" joka sisältää taulukon.\n\nTaulukko markdown-muodossa (| sarake1 | sarake2 |). Lisää taulukon ylä- ja alapuolelle selittävät kappaleet.`
+          :`Write chapter "${slide.label}" with a table.\n\nTable in markdown format (| col1 | col2 |). Add explanatory paragraphs above and below the table.`,
+        list:fi?`Kirjoita luku "${slide.label}" joka sisältää listan.\n\nAloita johdantokappaleella. Lista numeroidusti tai bulletoituna. Jokainen kohta 1-2 lausetta. Lopeta yhteenvedolla.`
+          :`Write chapter "${slide.label}" with a list.\n\nStart with intro paragraph. List with numbers or bullets. Each item 1-2 sentences. End with summary.`,
+        summary:fi?`Kirjoita yhteenveto/tiivistelmä-luku "${slide.label}".\n\nAvainluvut, johtopäätökset ja suositukset. Kirjoita kappaleina, käytä lukuja korostaen.`
+          :`Write summary chapter "${slide.label}".\n\nKey figures, conclusions and recommendations. Write in paragraphs, emphasize numbers.`,
+      };
+      let prompt,layoutNote,fullPrompt;
+      if(isDocx){
+        prompt=docxPrompts[slide.layout]||docxPrompts.text;
+        fullPrompt=`[LUKU ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}`;
+      }else{
+        prompt=layoutPrompts[slide.layout]||layoutPrompts.bullets;
+        layoutNote=langRef.current==="fi"
+          ?`\n\nJos taulukko (| sarake1 | sarake2 |) olisi selkeämpi kuin nykyinen layout (${slide.layout}), käytä markdown-taulukkoa — järjestelmä tunnistaa sen automaattisesti. Tarjoa 2 vaihtoehtoa. Kerro kumpi on suosituksesi.`
+          :`\n\nIf a table (| col1 | col2 |) would be clearer than current layout (${slide.layout}), use markdown table — the system detects it automatically. Offer 2 options, state your recommendation.`;
+        fullPrompt=`[DIA ${idx+1}/${cur.length} — ${slide.label} (${slide.layout})]\n${prompt}${layoutNote}`;
+      }
+      const r=await api([{role:"user",content:fullPrompt}],(isDocx?"VAIHE: Dokumentin sisältö.\n":"VAIHE: Diojen sisältö.\n")+buildContext());
       const cleanText=strip(r);lastProposalRef.current[slide.id]=cleanText;
-      addDivider("📄 Dia "+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
+      addDivider((isDocx?"📄 Luku ":"📄 Dia ")+(idx+1)+"/"+cur.length+" — "+(slide.icon||"")+" "+slide.label);
       addMsg("assistant",cleanText);
       setStatuses(prev=>({...prev,[slide.id]:"confirming"}));
     }finally{proposingRef.current=false;}
@@ -945,12 +978,19 @@ export default function App() {
   }
 
   async function doDownload(){
-    setScreenSync("ready");addDivider("✅ PowerPoint");addMsg("assistant",T[langRef.current].generating);setBuilding(true);
+    const isDocx=outputTypeRef.current==="docx";
+    const ext=isDocx?"docx":"pptx";
+    setScreenSync("ready");addDivider(isDocx?"✅ Word":"✅ PowerPoint");addMsg("assistant",T[langRef.current].generating);setBuilding(true);
     try{
-      const r=await fetch(API+"/api/build-pptx",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({slideData:collectedRef.current,slideStructure:slidesRef.current,lang:langRef.current})});
+      const endpoint=isDocx?"/api/build-docx":"/api/build-pptx";
+      const payload=isDocx
+        ?{sections:collectedRef.current,structure:slidesRef.current,proposals:lastProposalRef.current,lang:langRef.current}
+        :{slideData:collectedRef.current,slideStructure:slidesRef.current,lang:langRef.current};
+      const r=await fetch(API+endpoint,{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify(payload)});
       if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||"HTTP "+r.status);
       const blob=await r.blob();const url=URL.createObjectURL(blob);
-      Object.assign(document.createElement("a"),{href:url,download:"projektisuunnitelma.pptx"}).click();URL.revokeObjectURL(url);
+      const fileName=(currentPresNameRef.current||"dokumentti").replace(/[^a-zäöåA-ZÄÖÅ0-9\s-]/g,"").trim().replace(/\s+/g,"_")+"."+ext;
+      Object.assign(document.createElement("a"),{href:url,download:fileName}).click();URL.revokeObjectURL(url);
       addMsg("assistant",T[langRef.current].downloaded);
       clearSession(); // Esitys ladattu — tyhjennä tallennettu sessio
     }catch(e){
@@ -1094,6 +1134,7 @@ export default function App() {
       summary:summaryRef.current,decisions:decisionsRef.current,
       docContext:docContextRef.current?.substring(0,3000),focus:focusTypeRef.current,
       proposals:lastProposalRef.current,msgs:msgs.slice(-50),profileId:activeProfileRef.current?.id||null,
+      outputType:outputTypeRef.current||"pptx",
     };
     // Tallenna jaettu konteksti projektille
     const ctx={summary:summaryRef.current||"",docContext:docContextRef.current?.substring(0,3000)||"",decisions:decisionsRef.current||[]};
@@ -1103,15 +1144,14 @@ export default function App() {
         await fetch(API+"/api/projects/"+currentProjectId,{method:"PUT",headers:authHeaders(),
           body:JSON.stringify({contextJson:ctx})});
       }
-      // Tallenna/päivitä esitys
-      const titleSlide=slidesRef.current.find(s=>s.layout==="title");
-      const autoName=titleSlide&&collectedRef.current[titleSlide.id]?.title?collectedRef.current[titleSlide.id].title:(focusTypeRef.current||"Esitys");
+      // Tallenna/päivitä esitys — käytä käyttäjän antamaa nimeä
+      const presName=currentPresNameRef.current||focusTypeRef.current||"Esitys";
       if(currentPresentationId){
         await fetch(API+"/api/presentations/"+currentPresentationId,{method:"PUT",headers:authHeaders(),
-          body:JSON.stringify({name:autoName,focusType:focusTypeRef.current,stateJson:state})});
+          body:JSON.stringify({name:presName,focusType:focusTypeRef.current,stateJson:state})});
       }else if(currentProjectId){
         const r=await fetch(API+"/api/projects/"+currentProjectId+"/presentations",{method:"POST",headers:authHeaders(),
-          body:JSON.stringify({name:autoName,focusType:focusTypeRef.current,stateJson:state})});
+          body:JSON.stringify({name:presName,focusType:focusTypeRef.current,stateJson:state})});
         const d=await r.json();if(d.id)setCurrentPresentationId(d.id);
       }
       loadProjects();
@@ -1138,6 +1178,8 @@ export default function App() {
       if(!r.ok)return;const d=await r.json();const s=d.presentation.state_json;
       setCurrentPresentationId(id);
       currentProjectNameRef.current=d.projectName||"";
+      currentPresNameRef.current=d.presentation.name||"";
+      if(s.outputType){setOutputType(s.outputType);outputTypeRef.current=s.outputType;}
       slidesRef.current=s.slides||[];setSlides(s.slides||[]);
       collectedRef.current=s.collected||{};
       summaryRef.current=s.summary||"";decisionsRef.current=s.decisions||[];
@@ -1189,8 +1231,10 @@ export default function App() {
     }catch(e){console.error("Create project failed:",e);}
   }
   // Aloita uusi esitys projektin kontekstilla
-  function startNewPresentation(presName){
+  function startNewPresentation(presName,type){
     setCurrentPresentationId(null);
+    currentPresNameRef.current=presName||"";
+    if(type){setOutputType(type);outputTypeRef.current=type;}
     // Lataa projektin jaettu konteksti
     const ctx=projectContextRef.current||{};
     if(ctx.summary){summaryRef.current=ctx.summary;}
@@ -1474,19 +1518,40 @@ export default function App() {
   }
 
   // ═══ PROJEKTI-SIVU ═══
+  const [editingProjectName,setEditingProjectName]=useState(false);
+  const [editProjNameVal,setEditProjNameVal]=useState("");
+  const [newPresType,setNewPresType]=useState("pptx");
+  async function renameProject(newName){
+    if(!newName.trim()||!currentProjectId)return;
+    try{await fetch(API+"/api/projects/"+currentProjectId,{method:"PUT",headers:authHeaders(),body:JSON.stringify({name:newName.trim()})});
+      currentProjectNameRef.current=newName.trim();setEditingProjectName(false);loadProjects();
+    }catch{}
+  }
+
   if(screen==="project"){
     const cardStyle={background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:16,marginBottom:8,textAlign:"left"};
     const sectionTitle={color:G.white,fontSize:14,fontWeight:700,marginBottom:10};
     const smallBtn=(bg,clr)=>({background:bg||"transparent",border:"1px solid "+(clr||G.grey),borderRadius:6,padding:"4px 10px",color:clr||G.grey,fontSize:11,cursor:"pointer",fontWeight:600});
     const hasContext=!!(projectContext.summary||projectContext.docContext);
     return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'Segoe UI',sans-serif"}}><div style={{maxWidth:560,width:"100%",textAlign:"center"}}>
-      <button onClick={()=>setScreenSync("intro")} style={{...smallBtn("",G.codeBlue),marginBottom:20,fontSize:12}}>{t.backToMain}</button>
+      <button onClick={()=>{setScreenSync("intro");loadProjects();}} style={{...smallBtn("",G.codeBlue),marginBottom:20,fontSize:12}}>{t.backToMain}</button>
       <div style={{width:56,height:56,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,color:G.white,fontWeight:700,margin:"0 auto 16px"}}>G</div>
-      <h2 style={{color:G.white,fontSize:22,fontWeight:700,margin:"0 0 6px"}}>{currentProjectNameRef.current}</h2>
+
+      {/* Projektin nimi — klikkaa muokataksesi */}
+      {editingProjectName?
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:6}}>
+          <input type="text" value={editProjNameVal} onChange={e=>setEditProjNameVal(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter")renameProject(editProjNameVal);if(e.key==="Escape")setEditingProjectName(false);}}
+            style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:18,fontWeight:700,textAlign:"center",outline:"none",minWidth:200}} autoFocus/>
+          <button onClick={()=>renameProject(editProjNameVal)} style={smallBtn(G.mint,G.white)}>OK</button>
+        </div>
+      :<h2 onClick={()=>{setEditProjNameVal(currentProjectNameRef.current);setEditingProjectName(true);}}
+        style={{color:G.white,fontSize:22,fontWeight:700,margin:"0 0 6px",cursor:"pointer",borderBottom:"1px dashed rgba(255,255,255,0.2)"}}
+        title={langRef.current==="fi"?"Klikkaa muokataksesi nimeä":"Click to edit name"}>{currentProjectNameRef.current}</h2>}
       <div style={{color:hasContext?G.mint:G.grey,fontSize:12,marginBottom:20}}>{hasContext?("✓ "+t.interviewDone):t.interviewNotDone}</div>
 
       {/* Uusi esitys */}
-      <button onClick={()=>{setNewPresName("");setShowNewPresModal(true);}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:20}}>
+      <button onClick={()=>{setNewPresName("");setNewPresType("pptx");setShowNewPresModal(true);}} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:12,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:20}}>
         + {t.newPresentation}
       </button>
 
@@ -1504,15 +1569,29 @@ export default function App() {
       </div>
       :<div style={{color:G.grey,fontSize:13,fontStyle:"italic",marginBottom:20}}>{t.noPresentations}</div>}
 
-      {/* Uusi esitys -modaali */}
+      {/* Uusi esitys -modaali: nimi + tyyppi (PPTX/DOCX) */}
       {showNewPresModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowNewPresModal(false);}}>
-        <div style={{background:G.white,borderRadius:16,padding:28,width:400,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+        <div style={{background:G.white,borderRadius:16,padding:28,width:420,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
           <h3 style={{margin:"0 0 16px",color:G.deepBlue}}>{t.enterPresentationName}</h3>
           <input type="text" value={newPresName} onChange={e=>setNewPresName(e.target.value)} placeholder={t.presentationName}
-            onKeyDown={e=>{if(e.key==="Enter"&&newPresName.trim()){setShowNewPresModal(false);startNewPresentation(newPresName.trim());}}}
             style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid "+G.silver,fontSize:14,marginBottom:14,boxSizing:"border-box",outline:"none"}} autoFocus/>
+          {/* Tyyppi-valinta */}
+          <div style={{display:"flex",gap:10,marginBottom:16}}>
+            <button onClick={()=>setNewPresType("pptx")}
+              style={{flex:1,padding:"12px 0",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",
+                background:newPresType==="pptx"?G.orange:"transparent",color:newPresType==="pptx"?G.white:G.deepBlue,
+                border:newPresType==="pptx"?"2px solid "+G.orange:"2px solid "+G.silver}}>
+              📊 PowerPoint
+            </button>
+            <button onClick={()=>setNewPresType("docx")}
+              style={{flex:1,padding:"12px 0",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",
+                background:newPresType==="docx"?G.digitalBlue:"transparent",color:newPresType==="docx"?G.white:G.deepBlue,
+                border:newPresType==="docx"?"2px solid "+G.digitalBlue:"2px solid "+G.silver}}>
+              📄 Word
+            </button>
+          </div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{if(newPresName.trim()){setShowNewPresModal(false);startNewPresentation(newPresName.trim());}}}
+            <button onClick={()=>{if(newPresName.trim()){setShowNewPresModal(false);startNewPresentation(newPresName.trim(),newPresType);}}}
               disabled={!newPresName.trim()}
               style={{flex:1,background:newPresName.trim()?G.orange:G.silver,color:G.white,border:"none",borderRadius:8,padding:"10px 0",fontWeight:700,cursor:newPresName.trim()?"pointer":"not-allowed"}}>{t.start}</button>
             <button onClick={()=>setShowNewPresModal(false)} style={{flex:1,background:G.light,color:G.deepBlue,border:"none",borderRadius:8,padding:"10px 0",fontWeight:600,cursor:"pointer"}}>{t.close}</button>
