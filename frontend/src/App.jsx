@@ -11,7 +11,13 @@ const G = {
 const T = {
   fi:{
     title:"Projektisuunnitelma-agentti",subtitle:"Rakennetaan projektisuunnitelmasi yhdessä, dia kerrallaan.",
-    start:"Aloita haastattelu →",login:"Kirjaudu →",password:"Salasana",wrongPw:"Väärä salasana",
+    start:"Aloita haastattelu →",login:"Kirjaudu →",register:"Luo tili →",password:"Salasana",wrongPw:"Väärä salasana",
+    gatePw:"Sovelluksen salasana",email:"Sähköposti",name:"Nimi",noAccount:"Ei tiliä?",hasAccount:"Onko jo tili?",
+    registerTitle:"Luo uusi tili",loginTitle:"Kirjaudu sisään",pwTooShort:"Salasanan on oltava vähintään 6 merkkiä",
+    myProjects:"Omat projektit",newProject:"Uusi projekti",saveProject:"Tallenna projekti",
+    agentProfiles:"Agenttiprofiilit",newProfile:"Uusi profiili",profileName:"Profiilin nimi",profileInstr:"Ohjeet agentille...",
+    deleteConfirm:"Haluatko varmasti poistaa tämän?",noProjects:"Ei tallennettuja projekteja.",noProfiles:"Ei agenttiprofiileja.",
+    logout:"Kirjaudu ulos",
     steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]],
     phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Diarakenne",planning:"📄 Vaihe 5 — Dia",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
     slides:"Diat",redownload:"🚀 Lataa uudelleen",
@@ -26,7 +32,13 @@ const T = {
   },
   en:{
     title:"Project Plan Agent",subtitle:"Let's build your project presentation together, slide by slide.",
-    start:"Start interview →",login:"Log in →",password:"Password",wrongPw:"Wrong password",
+    start:"Start interview →",login:"Log in →",register:"Create account →",password:"Password",wrongPw:"Wrong password",
+    gatePw:"Application password",email:"Email",name:"Name",noAccount:"No account?",hasAccount:"Already have an account?",
+    registerTitle:"Create new account",loginTitle:"Log in",pwTooShort:"Password must be at least 6 characters",
+    myProjects:"My projects",newProject:"New project",saveProject:"Save project",
+    agentProfiles:"Agent profiles",newProfile:"New profile",profileName:"Profile name",profileInstr:"Instructions for agent...",
+    deleteConfirm:"Are you sure you want to delete this?",noProjects:"No saved projects.",noProfiles:"No agent profiles.",
+    logout:"Log out",
     steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Slide by slide","I propose, you confirm"],["📊","Ready PPTX","Gofore-themed presentation"]],
     phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Slide",review:"👀 Final review",ready:"✅ Done"},
     slides:"Slides",redownload:"🚀 Download again",
@@ -170,12 +182,12 @@ async function callAPI(messages, systemExtra, forceSearch, lang) {
   return d.text;
 }
 
-// Automaattinen uudelleenkirjautuminen — käyttää viimeistä salasanaa
-let _lastPassword = "";
+// Automaattinen uudelleenkirjautuminen — käyttää viimeisiä tunnuksia
+let _lastUserCreds = null; // { email, password, gateToken }
 async function tryAutoRelogin() {
-  if (!_lastPassword) return false;
+  if (!_lastUserCreds) return false;
   try {
-    const r = await fetch(API+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:_lastPassword})});
+    const r = await fetch(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(_lastUserCreds)});
     const d = await r.json();
     if (d.token) { localStorage.setItem("pm_token", d.token); return true; }
   } catch {}
@@ -305,7 +317,13 @@ export default function App() {
   const setLang=(l)=>{setLangState(l);localStorage.setItem("pm_lang",l);langRef.current=l;};
   const t=T[lang];
   const [authed,setAuthed]=useState(!!localStorage.getItem("pm_token"));
+  const [currentUser,setCurrentUser]=useState(null);
+  // Auth flow: "gate" → "login" → "register" → (authed)
+  const [authStep,setAuthStep]=useState(localStorage.getItem("pm_gate_token")?"login":"gate");
+  const [gateToken,setGateToken]=useState(localStorage.getItem("pm_gate_token")||"");
   const [pwInput,setPwInput]=useState(""); const [pwError,setPwError]=useState(false);
+  const [authEmail,setAuthEmail]=useState(""); const [authName,setAuthName]=useState(""); const [authPw,setAuthPw]=useState("");
+  const [authError,setAuthError]=useState("");
   const [msgs,setMsgs]=useState([]); const [input,setInput]=useState(""); const [busy,setBusy]=useState(false);
   const [slides,setSlides]=useState([]); const [slideIdx,setSlideIdx]=useState(0); const [statuses,setStatuses]=useState({});
   const [building,setBuilding]=useState(false);
@@ -337,9 +355,8 @@ export default function App() {
       }catch(e){console.warn("Keepalive ping failed:",e.message);}
       // Tarkista token voimassaolo — yritä auto-relogin ensin
       try{
-        const r2=await fetch(API+"/api/verify-numbers",{
-          method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
-          body:JSON.stringify({text:""}),signal:AbortSignal.timeout(5000)});
+        const r2=await fetch(API+"/api/auth/me",{
+          headers:{"x-session-token":localStorage.getItem("pm_token")||""},signal:AbortSignal.timeout(5000)});
         if(r2.status===401){
           const ok=await tryAutoRelogin();
           if(!ok){localStorage.removeItem("pm_token");setAuthed(false);}
@@ -934,7 +951,56 @@ export default function App() {
     }setBusy(false);
   }
 
-  async function doLogin(){if(!pwInput)return;try{const r=await fetch(API+"/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwInput})});const d=await r.json();if(d.token){localStorage.setItem("pm_token",d.token);_lastPassword=pwInput;setAuthed(true);}else setPwError(true);}catch{setPwError(true);}}
+  // Gate-kirjautuminen (sovelluksen pääsalasana)
+  async function doGateLogin(){
+    if(!pwInput)return;
+    try{
+      const r=await fetch(API+"/api/gate-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwInput})});
+      const d=await r.json();
+      if(d.gateToken){localStorage.setItem("pm_gate_token",d.gateToken);setGateToken(d.gateToken);setAuthStep("login");setPwInput("");setPwError(false);}
+      else setPwError(true);
+    }catch{setPwError(true);}
+  }
+  // Käyttäjäkirjautuminen
+  async function doUserLogin(){
+    if(!authEmail||!authPw)return;setAuthError("");
+    try{
+      const r=await fetch(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail,password:authPw,gateToken})});
+      const d=await r.json();
+      if(d.token){
+        localStorage.setItem("pm_token",d.token);
+        _lastUserCreds={email:authEmail,password:authPw,gateToken};
+        setCurrentUser(d.user);setAuthed(true);
+      }else setAuthError(d.error||t.wrongPw);
+    }catch{setAuthError("Yhteysvirhe");}
+  }
+  // Rekisteröinti
+  async function doRegister(){
+    if(!authEmail||!authName||!authPw)return;setAuthError("");
+    if(authPw.length<6){setAuthError(t.pwTooShort);return;}
+    try{
+      const r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail,name:authName,password:authPw,gateToken})});
+      const d=await r.json();
+      if(d.token){
+        localStorage.setItem("pm_token",d.token);
+        _lastUserCreds={email:authEmail,password:authPw,gateToken};
+        setCurrentUser(d.user);setAuthed(true);
+      }else setAuthError(d.error||"Rekisteröinti epäonnistui");
+    }catch{setAuthError("Yhteysvirhe");}
+  }
+  // Uloskirjautuminen
+  function doLogout(){
+    localStorage.removeItem("pm_token");setAuthed(false);setCurrentUser(null);
+    setAuthStep("login");setAuthEmail("");setAuthPw("");setAuthName("");setAuthError("");
+    setScreen("intro");setMsgs([]);setSlides([]);setStatuses({});
+  }
+  // Hae käyttäjätiedot tokenilla sivun latautuessa
+  useEffect(()=>{
+    if(authed&&!currentUser){
+      fetch(API+"/api/auth/me",{headers:{"x-session-token":localStorage.getItem("pm_token")||""}})
+        .then(r=>r.ok?r.json():Promise.reject()).then(d=>setCurrentUser(d.user)).catch(()=>{localStorage.removeItem("pm_token");setAuthed(false);});
+    }
+  },[authed]);
 
   // ═══ RENDER ═══
   const canSend=!busy&&(input.trim().length>0||attachments.length>0);
@@ -945,13 +1011,38 @@ export default function App() {
     {[["fi","🇫🇮 Suomi"],["en","🇬🇧 English"]].map(([c,l])=>(<button key={c} onClick={()=>setLang(c)} style={{padding:"6px 16px",borderRadius:8,border:lang===c?"2px solid "+G.orange:"1px solid "+G.grey,background:lang===c?G.orange:"transparent",color:lang===c?G.white:G.grey,fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>))}
   </div>);
 
-  if(!authed)return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',sans-serif"}}><div style={{textAlign:"center",width:320}}>
-    <div style={{width:60,height:60,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:G.white,fontWeight:700,margin:"0 auto 20px"}}>G</div>
-    <h2 style={{color:G.white,marginBottom:8}}>{t.title}</h2><LangToggle/>
-    <input type="password" value={pwInput} onChange={e=>{setPwInput(e.target.value);setPwError(false);}} onKeyDown={e=>{if(e.key==="Enter")doLogin();}} placeholder={t.password} style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid "+(pwError?G.orange:G.grey),background:"rgba(255,255,255,0.08)",color:G.white,fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
-    {pwError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{t.wrongPw}</div>}
-    <button onClick={doLogin} style={{width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer"}}>{t.login}</button>
-  </div></div>);
+  if(!authed){
+    const inputStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid "+G.grey,background:"rgba(255,255,255,0.08)",color:G.white,fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:8};
+    const btnStyle={width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer"};
+    const linkStyle={color:G.codeBlue,fontSize:13,cursor:"pointer",textDecoration:"underline",marginTop:12,display:"inline-block"};
+    return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',sans-serif"}}><div style={{textAlign:"center",width:340}}>
+      <div style={{width:60,height:60,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:G.white,fontWeight:700,margin:"0 auto 20px"}}>G</div>
+      <h2 style={{color:G.white,marginBottom:8}}>{t.title}</h2><LangToggle/>
+      {authStep==="gate"&&<>
+        <p style={{color:G.grey,fontSize:13,marginBottom:12}}>{t.gatePw}</p>
+        <input type="password" value={pwInput} onChange={e=>{setPwInput(e.target.value);setPwError(false);}} onKeyDown={e=>{if(e.key==="Enter")doGateLogin();}} placeholder={t.gatePw} style={{...inputStyle,border:"1.5px solid "+(pwError?G.orange:G.grey)}}/>
+        {pwError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{t.wrongPw}</div>}
+        <button onClick={doGateLogin} style={btnStyle}>{t.login}</button>
+      </>}
+      {authStep==="login"&&<>
+        <p style={{color:G.grey,fontSize:13,marginBottom:12}}>{t.loginTitle}</p>
+        <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder={t.email} style={inputStyle}/>
+        <input type="password" value={authPw} onChange={e=>setAuthPw(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doUserLogin();}} placeholder={t.password} style={inputStyle}/>
+        {authError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{authError}</div>}
+        <button onClick={doUserLogin} style={btnStyle}>{t.login}</button>
+        <span onClick={()=>{setAuthStep("register");setAuthError("");}} style={linkStyle}>{t.noAccount}</span>
+      </>}
+      {authStep==="register"&&<>
+        <p style={{color:G.grey,fontSize:13,marginBottom:12}}>{t.registerTitle}</p>
+        <input type="text" value={authName} onChange={e=>setAuthName(e.target.value)} placeholder={t.name} style={inputStyle}/>
+        <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder={t.email} style={inputStyle}/>
+        <input type="password" value={authPw} onChange={e=>setAuthPw(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doRegister();}} placeholder={t.password} style={inputStyle}/>
+        {authError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{authError}</div>}
+        <button onClick={doRegister} style={btnStyle}>{t.register}</button>
+        <span onClick={()=>{setAuthStep("login");setAuthError("");}} style={linkStyle}>{t.hasAccount}</span>
+      </>}
+    </div></div>);
+  }
 
   if(screen==="intro")return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'Segoe UI',sans-serif"}}><div style={{maxWidth:480,width:"100%",textAlign:"center"}}>
     <div style={{width:68,height:68,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,color:G.white,fontWeight:700,margin:"0 auto 24px"}}>G</div>
@@ -977,7 +1068,11 @@ export default function App() {
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <div style={{background:G.deepBlue,padding:"8px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <div style={{width:28,height:28,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:G.white,fontWeight:700,fontSize:12}}>G</div>
-        <div><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11}}>{phaseText}</div></div>
+        <div style={{flex:1}}><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11}}>{phaseText}</div></div>
+        {currentUser&&<div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{color:G.grey,fontSize:12}}>{currentUser.name}</span>
+          <button onClick={doLogout} style={{background:"transparent",border:"1px solid "+G.grey,borderRadius:6,padding:"4px 10px",color:G.grey,fontSize:11,cursor:"pointer"}}>{t.logout}</button>
+        </div>}
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"20px 16px",position:"relative"}}
         onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragOver(false);}} onDrop={e=>{e.preventDefault();setDragOver(false);const fl=[];if(e.dataTransfer.items){for(const it of Array.from(e.dataTransfer.items)){if(it.kind==="file"){const f=it.getAsFile();if(f)fl.push(f);}}}else fl.push(...Array.from(e.dataTransfer.files));if(fl.length)addFiles(fl);}}>

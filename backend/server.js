@@ -5,33 +5,157 @@ const Anthropic = require("@anthropic-ai/sdk");
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { users, projects, profiles } = require("./db");
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-const PASSWORD = process.env.APP_PASSWORD || "AgenttiTestaus123";
-const sessions = new Map();
-function generateToken() { return require("crypto").randomBytes(32).toString("hex"); }
-function isValidToken(token) {
-  const exp = sessions.get(token);
-  if (!exp) return false;
-  if (Date.now() > exp) { sessions.delete(token); return false; }
-  return true;
+const APP_PASSWORD = process.env.APP_PASSWORD || "AgenttiTestaus123";
+const JWT_SECRET = process.env.JWT_SECRET || require("crypto").randomBytes(64).toString("hex");
+
+// ═══ AUTH MIDDLEWARE ═══
+// Julkiset reitit jotka eivät vaadi tokenia
+const PUBLIC_PATHS = ["/health", "/api/gate-login", "/api/auth/register", "/api/auth/login"];
+
+function authMiddleware(req, res, next) {
+  if (PUBLIC_PATHS.includes(req.path)) return next();
+  const token = req.headers["x-session-token"];
+  if (!token) return res.status(401).json({ error: "Token puuttuu" });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.userId;
+    req.userEmail = decoded.email;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Istunto vanhentunut" });
+  }
 }
-app.use((req, res, next) => {
-  if (req.path === "/health" || req.path === "/api/login") return next();
-  if (!isValidToken(req.headers["x-session-token"])) return res.status(401).json({ error: "Istunto vanhentunut" });
-  next();
-});
+app.use(authMiddleware);
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-app.post("/api/login", (req, res) => {
-  if (req.body.password !== PASSWORD) return res.status(401).json({ error: "Väärä salasana" });
-  const token = generateToken();
-  sessions.set(token, Date.now() + 8 * 3600000);
-  res.json({ token });
+// ═══ PORTTISALASANA (gate) — pääsy sovellukseen ═══
+app.post("/api/gate-login", (req, res) => {
+  if (req.body.password !== APP_PASSWORD) return res.status(401).json({ error: "Väärä salasana" });
+  // Porttisalasana OK — palauta gate-token (ei käyttäjäkohtainen)
+  const gateToken = jwt.sign({ gate: true }, JWT_SECRET, { expiresIn: "24h" });
+  res.json({ gateToken });
+});
+
+// ═══ KÄYTTÄJIEN REKISTERÖINTI & KIRJAUTUMINEN ═══
+app.post("/api/auth/register", (req, res) => {
+  const { email, name, password, gateToken } = req.body;
+  // Tarkista porttisalasana
+  try { jwt.verify(gateToken, JWT_SECRET); } catch { return res.status(401).json({ error: "Kirjaudu ensin pääsalasanalla" }); }
+  if (!email || !name || !password) return res.status(400).json({ error: "Täytä kaikki kentät" });
+  if (password.length < 6) return res.status(400).json({ error: "Salasanan on oltava vähintään 6 merkkiä" });
+  // Tarkista onko sähköposti jo käytössä
+  const existing = users.getByEmail.get(email.toLowerCase().trim());
+  if (existing) return res.status(409).json({ error: "Sähköposti on jo käytössä" });
+  try {
+    const hash = bcrypt.hashSync(password, 12);
+    const result = users.create.run(email.toLowerCase().trim(), name.trim(), hash);
+    const userId = result.lastInsertRowid;
+    users.updateLastLogin.run(userId);
+    const token = jwt.sign({ userId, email: email.toLowerCase().trim() }, JWT_SECRET, { expiresIn: "8h" });
+    res.json({ token, user: { id: userId, email: email.toLowerCase().trim(), name: name.trim() } });
+  } catch (err) {
+    res.status(500).json({ error: "Rekisteröinti epäonnistui: " + err.message });
+  }
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { email, password, gateToken } = req.body;
+  // Tarkista porttisalasana
+  try { jwt.verify(gateToken, JWT_SECRET); } catch { return res.status(401).json({ error: "Kirjaudu ensin pääsalasanalla" }); }
+  if (!email || !password) return res.status(400).json({ error: "Täytä kaikki kentät" });
+  const user = users.getByEmail.get(email.toLowerCase().trim());
+  if (!user) return res.status(401).json({ error: "Väärä sähköposti tai salasana" });
+  if (!bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: "Väärä sähköposti tai salasana" });
+  users.updateLastLogin.run(user.id);
+  const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: "8h" });
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+});
+
+// ═══ KÄYTTÄJÄTIEDOT ═══
+app.get("/api/auth/me", (req, res) => {
+  const user = users.getById.get(req.userId);
+  if (!user) return res.status(404).json({ error: "Käyttäjää ei löydy" });
+  res.json({ user });
+});
+
+// ═══ PROJEKTIT ═══
+app.get("/api/projects", (req, res) => {
+  const list = projects.getByUser.all(req.userId);
+  res.json({ projects: list });
+});
+
+app.post("/api/projects", (req, res) => {
+  const { name, description, focusType, stateJson } = req.body;
+  if (!name) return res.status(400).json({ error: "Nimi puuttuu" });
+  try {
+    const result = projects.create.run(req.userId, name.trim(), description || "", focusType || "", JSON.stringify(stateJson || {}));
+    res.json({ id: result.lastInsertRowid, message: "Projekti tallennettu" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/projects/:id", (req, res) => {
+  const project = projects.getById.get(req.params.id, req.userId);
+  if (!project) return res.status(404).json({ error: "Projektia ei löydy" });
+  project.state_json = JSON.parse(project.state_json || "{}");
+  res.json({ project });
+});
+
+app.put("/api/projects/:id", (req, res) => {
+  const { name, description, focusType, stateJson } = req.body;
+  const existing = projects.getById.get(req.params.id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Projektia ei löydy" });
+  projects.update.run(
+    name || existing.name, description ?? existing.description,
+    focusType ?? existing.focus_type, JSON.stringify(stateJson || JSON.parse(existing.state_json || "{}")),
+    req.params.id, req.userId
+  );
+  res.json({ message: "Projekti päivitetty" });
+});
+
+app.delete("/api/projects/:id", (req, res) => {
+  projects.delete.run(req.params.id, req.userId);
+  res.json({ message: "Projekti poistettu" });
+});
+
+// ═══ AGENTTIPROFIILIT ═══
+app.get("/api/profiles", (req, res) => {
+  const list = profiles.getByUser.all(req.userId);
+  res.json({ profiles: list });
+});
+
+app.post("/api/profiles", (req, res) => {
+  const { name, instructions } = req.body;
+  if (!name) return res.status(400).json({ error: "Nimi puuttuu" });
+  try {
+    const result = profiles.create.run(req.userId, name.trim(), instructions || "");
+    res.json({ id: result.lastInsertRowid, message: "Profiili tallennettu" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/profiles/:id", (req, res) => {
+  const { name, instructions } = req.body;
+  const existing = profiles.getById.get(req.params.id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Profiilia ei löydy" });
+  profiles.update.run(name || existing.name, instructions ?? existing.instructions, req.params.id, req.userId);
+  res.json({ message: "Profiili päivitetty" });
+});
+
+app.delete("/api/profiles/:id", (req, res) => {
+  profiles.delete.run(req.params.id, req.userId);
+  res.json({ message: "Profiili poistettu" });
 });
 
 app.get("/health", (req, res) => res.json({ status: "ok", ts: Date.now() }));
