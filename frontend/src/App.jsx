@@ -1123,23 +1123,37 @@ function App() {
   }
 
   // ═══ TIEDOSTOT ═══
+  const MAX_FILE_MB=10;
   async function readFile(f){
     const ext=f.name.split(".").pop().toLowerCase();
+    const fi=langRef.current==="fi";
+    const sizeMB=f.size/(1024*1024);
+    // Kokorajoitus
+    if(sizeMB>MAX_FILE_MB){return{name:f.name,content:"",error:fi?`⚠️ ${f.name} on liian suuri (${sizeMB.toFixed(1)} MB). Maksimikoko on ${MAX_FILE_MB} MB.`:`⚠️ ${f.name} is too large (${sizeMB.toFixed(1)} MB). Maximum size is ${MAX_FILE_MB} MB.`};}
     // Tekstitiedostot
-    if(["txt","md","csv","json","tsv"].includes(ext)){const t=await f.text().catch(()=>"");return{name:f.name,content:"["+f.name+"]\n"+t.substring(0,8000)};}
+    if(["txt","md","csv","json","tsv"].includes(ext)){const t=await f.text().catch(()=>"");return{name:f.name,content:"["+f.name+"]\n"+t.substring(0,12000),sizeMB};}
     // Excel → backend-parsinta
     if(["xlsx","xls"].includes(ext)){
       try{const buf=await f.arrayBuffer();const bytes=new Uint8Array(buf);let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));
         const r=await fetch(API+"/api/extract-excel",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({base64:btoa(bin),fileName:f.name})});
-        const d=await r.json();return{name:f.name,content:"["+f.name+(d.text?"]\n"+d.text:": virhe]")};}catch{return{name:f.name,content:"["+f.name+": virhe]"};}}
+        const d=await r.json();if(!r.ok)return{name:f.name,content:"",error:"⚠️ "+f.name+": "+(d.error||"virhe")};
+        return{name:f.name,content:"["+f.name+"]\n"+(d.text||""),sizeMB};}catch(e){return{name:f.name,content:"",error:"⚠️ "+f.name+": "+(e.message||"virhe")};}}
     // PDF ja kuvat → Anthropic API
     const mm={pdf:"application/pdf",jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp"};const mt=mm[ext];
     if(mt){try{const buf=await f.arrayBuffer();const bytes=new Uint8Array(buf);let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));
       const r=await fetch(API+"/api/extract-file",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({base64:btoa(bin),mimeType:mt,fileName:f.name})});
-      const d=await r.json();return{name:f.name,content:"["+f.name+(d.text?"]\n"+d.text:": virhe]")};}catch{return{name:f.name,content:"["+f.name+": virhe]"};}}
-    return{name:f.name,content:"["+f.name+" — ei tuettu]"};
+      const d=await r.json();if(!r.ok)return{name:f.name,content:"",error:"⚠️ "+f.name+": "+(d.error||"virhe")};
+      const warning=(sizeMB>2&&ext==="pdf")?(fi?`\n\n⚠️ Huom: Tiedosto on iso (${sizeMB.toFixed(1)} MB). Jos jotain puuttuu, yritä jakaa pienempiin osiin.`:`\n\nNote: Large file (${sizeMB.toFixed(1)} MB). If something is missing, try splitting into smaller parts.`):"";
+      return{name:f.name,content:"["+f.name+"]\n"+(d.text||"")+warning,sizeMB};}catch(e){return{name:f.name,content:"",error:"⚠️ "+f.name+": "+(e.message||"virhe")};}}
+    return{name:f.name,content:"",error:(fi?`⚠️ ${f.name} — tiedostotyyppi (.${ext}) ei tuettu. Tuetut: PDF, kuvat (JPG/PNG), Excel (XLSX), tekstitiedostot (TXT/CSV/MD).`:`⚠️ ${f.name} — file type (.${ext}) not supported. Supported: PDF, images (JPG/PNG), Excel (XLSX), text files (TXT/CSV/MD).`)};
   }
-  async function addFiles(fl){const read=await Promise.all(Array.from(fl).map(readFile));setAttachments(p=>[...p,...read]);}
+  async function addFiles(fl){
+    const results=await Promise.all(Array.from(fl).map(readFile));
+    const ok=results.filter(r=>!r.error);
+    const errors=results.filter(r=>r.error);
+    if(ok.length>0)setAttachments(p=>[...p,...ok]);
+    if(errors.length>0){errors.forEach(e=>addMsg("assistant",e.error));}
+  }
 
   // ═══ LÄHETYS ═══
   async function doSend(){
@@ -1783,7 +1797,7 @@ function App() {
       <div style={{background:G.white,borderTop:"1px solid "+G.silver,padding:"12px 16px",flexShrink:0}}>
         <div style={{display:"flex",gap:8,alignItems:"flex-end",maxWidth:900,margin:"0 auto"}}>
           <button onClick={()=>fileInput.current?.click()} style={{width:36,height:36,flexShrink:0,background:"transparent",border:"1.5px dashed "+G.silver,borderRadius:9,cursor:"pointer",fontSize:16,color:G.grey}}>📎</button>
-          <input ref={fileInput} type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg" style={{display:"none"}} onChange={e=>{if(e.target.files?.length)addFiles(e.target.files);e.target.value="";}}/>
+          <input ref={fileInput} type="file" multiple accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.xlsx,.xls,.gif,.webp" style={{display:"none"}} onChange={e=>{if(e.target.files?.length)addFiles(e.target.files);e.target.value="";}}/>
           <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend();}}}
             placeholder={t.placeholder[screen]||t.placeholder.default}
             style={{flex:1,background:G.light,outline:"none",resize:"vertical",border:"1.5px solid "+(input.length>0?G.digitalBlue:G.silver),borderRadius:11,padding:"10px 14px",fontSize:14,fontFamily:"inherit",lineHeight:1.6,color:G.deepBlue,minHeight:80,maxHeight:220}}/>
