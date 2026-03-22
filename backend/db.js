@@ -17,9 +17,9 @@ db.pragma("foreign_keys = ON");
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
+    username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    is_admin INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     last_login TEXT
   );
@@ -51,16 +51,27 @@ db.exec(`
 
 // -- Users --
 const createUser = db.prepare(
-  "INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)"
+  "INSERT INTO users (username, password_hash) VALUES (?, ?)"
 );
-const getUserByEmail = db.prepare(
-  "SELECT * FROM users WHERE email = ?"
+const getUserByUsername = db.prepare(
+  "SELECT * FROM users WHERE username = ?"
 );
 const getUserById = db.prepare(
-  "SELECT id, email, name, created_at, last_login FROM users WHERE id = ?"
+  "SELECT id, username, is_admin, created_at, last_login FROM users WHERE id = ?"
 );
 const updateLastLogin = db.prepare(
   "UPDATE users SET last_login = datetime('now') WHERE id = ?"
+);
+
+// -- Admin --
+const getAllUsers = db.prepare(
+  "SELECT id, username, is_admin, created_at, last_login FROM users ORDER BY created_at DESC"
+);
+const deleteUser = db.prepare(
+  "DELETE FROM users WHERE id = ?"
+);
+const resetPassword = db.prepare(
+  "UPDATE users SET password_hash = ? WHERE id = ?"
 );
 
 // -- Projects --
@@ -99,7 +110,7 @@ const deleteProfile = db.prepare(
 
 module.exports = {
   db,
-  users: { create: createUser, getByEmail: getUserByEmail, getById: getUserById, updateLastLogin },
+  users: { create: createUser, getByUsername: getUserByUsername, getById: getUserById, updateLastLogin, getAll: getAllUsers, delete: deleteUser, resetPassword },
   projects: { create: createProject, getByUser: getProjectsByUser, getById: getProjectById, update: updateProject, delete: deleteProject },
   profiles: { create: createProfile, getByUser: getProfilesByUser, getById: getProfileById, update: updateProfile, delete: deleteProfile },
 };

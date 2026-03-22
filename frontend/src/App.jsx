@@ -11,13 +11,16 @@ const G = {
 const T = {
   fi:{
     title:"Projektisuunnitelma-agentti",subtitle:"Rakennetaan projektisuunnitelmasi yhdessä, dia kerrallaan.",
-    start:"Aloita haastattelu →",login:"Kirjaudu →",register:"Luo tili →",password:"Salasana",wrongPw:"Väärä salasana",
-    gatePw:"Sovelluksen salasana",email:"Sähköposti",name:"Nimi",noAccount:"Ei tiliä?",hasAccount:"Onko jo tili?",
-    registerTitle:"Luo uusi tili",loginTitle:"Kirjaudu sisään",pwTooShort:"Salasanan on oltava vähintään 6 merkkiä",
+    start:"Aloita haastattelu →",login:"Kirjaudu",register:"Rekisteröidy",password:"Salasana",passwordAgain:"Salasana uudelleen",
+    username:"Käyttäjänimi",accessKey:"Avain",wrongPw:"Väärä käyttäjänimi tai salasana",wrongKey:"Väärä avain",
+    noAccount:"Ei tiliä?",hasAccount:"Onko jo tili?",pwMismatch:"Salasanat eivät täsmää",pwTooShort:"Salasanan on oltava vähintään 6 merkkiä",
+    usernameTaken:"Käyttäjänimi on jo käytössä",usernameTooShort:"Käyttäjänimi liian lyhyt",
     myProjects:"Omat projektit",newProject:"Uusi projekti",saveProject:"Tallenna projekti",
     agentProfiles:"Agenttiprofiilit",newProfile:"Uusi profiili",profileName:"Profiilin nimi",profileInstr:"Ohjeet agentille...",
     deleteConfirm:"Haluatko varmasti poistaa tämän?",noProjects:"Ei tallennettuja projekteja.",noProfiles:"Ei agenttiprofiileja.",
-    logout:"Kirjaudu ulos",
+    logout:"Kirjaudu ulos",admin:"Hallinta",adminUsers:"Käyttäjät",resetPw:"Nollaa salasana",deleteUser:"Poista",
+    newPw:"Uusi salasana",confirmDelete:"Poistetaanko käyttäjä",pwResetOk:"Salasana nollattu!",userDeleted:"Käyttäjä poistettu",
+    close:"Sulje",you:"(sinä)",firstUserAdmin:"Ensimmäinen rekisteröity käyttäjä saa admin-oikeudet.",
     steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Dia kerrallaan","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis PPTX","Gofore-teemainen esitys"]],
     phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Diarakenne",planning:"📄 Vaihe 5 — Dia",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
     slides:"Diat",redownload:"🚀 Lataa uudelleen",
@@ -32,13 +35,16 @@ const T = {
   },
   en:{
     title:"Project Plan Agent",subtitle:"Let's build your project presentation together, slide by slide.",
-    start:"Start interview →",login:"Log in →",register:"Create account →",password:"Password",wrongPw:"Wrong password",
-    gatePw:"Application password",email:"Email",name:"Name",noAccount:"No account?",hasAccount:"Already have an account?",
-    registerTitle:"Create new account",loginTitle:"Log in",pwTooShort:"Password must be at least 6 characters",
+    start:"Start interview →",login:"Log in",register:"Register",password:"Password",passwordAgain:"Password again",
+    username:"Username",accessKey:"Access key",wrongPw:"Wrong username or password",wrongKey:"Wrong access key",
+    noAccount:"No account?",hasAccount:"Already have an account?",pwMismatch:"Passwords don't match",pwTooShort:"Password must be at least 6 characters",
+    usernameTaken:"Username already taken",usernameTooShort:"Username too short",
     myProjects:"My projects",newProject:"New project",saveProject:"Save project",
     agentProfiles:"Agent profiles",newProfile:"New profile",profileName:"Profile name",profileInstr:"Instructions for agent...",
     deleteConfirm:"Are you sure you want to delete this?",noProjects:"No saved projects.",noProfiles:"No agent profiles.",
-    logout:"Log out",
+    logout:"Log out",admin:"Admin",adminUsers:"Users",resetPw:"Reset password",deleteUser:"Delete",
+    newPw:"New password",confirmDelete:"Delete user",pwResetOk:"Password reset!",userDeleted:"User deleted",
+    close:"Close",you:"(you)",firstUserAdmin:"First registered user gets admin rights.",
     steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Slide by slide","I propose, you confirm"],["📊","Ready PPTX","Gofore-themed presentation"]],
     phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Slide",review:"👀 Final review",ready:"✅ Done"},
     slides:"Slides",redownload:"🚀 Download again",
@@ -182,8 +188,8 @@ async function callAPI(messages, systemExtra, forceSearch, lang) {
   return d.text;
 }
 
-// Automaattinen uudelleenkirjautuminen — käyttää viimeisiä tunnuksia
-let _lastUserCreds = null; // { email, password, gateToken }
+// Automaattinen uudelleenkirjautuminen
+let _lastUserCreds = null; // { username, password }
 async function tryAutoRelogin() {
   if (!_lastUserCreds) return false;
   try {
@@ -318,11 +324,10 @@ export default function App() {
   const t=T[lang];
   const [authed,setAuthed]=useState(!!localStorage.getItem("pm_token"));
   const [currentUser,setCurrentUser]=useState(null);
-  // Auth flow: "gate" → "login" → "register" → (authed)
-  const [authStep,setAuthStep]=useState(localStorage.getItem("pm_gate_token")?"login":"gate");
-  const [gateToken,setGateToken]=useState(localStorage.getItem("pm_gate_token")||"");
+  // Auth flow: "login" tai "register"
+  const [authStep,setAuthStep]=useState("login");
   const [pwInput,setPwInput]=useState(""); const [pwError,setPwError]=useState(false);
-  const [authEmail,setAuthEmail]=useState(""); const [authName,setAuthName]=useState(""); const [authPw,setAuthPw]=useState("");
+  const [authUser,setAuthUser]=useState(""); const [authPw,setAuthPw]=useState(""); const [authPw2,setAuthPw2]=useState(""); const [authKey,setAuthKey]=useState("");
   const [authError,setAuthError]=useState("");
   const [msgs,setMsgs]=useState([]); const [input,setInput]=useState(""); const [busy,setBusy]=useState(false);
   const [slides,setSlides]=useState([]); const [slideIdx,setSlideIdx]=useState(0); const [statuses,setStatuses]=useState({});
@@ -951,39 +956,30 @@ export default function App() {
     }setBusy(false);
   }
 
-  // Gate-kirjautuminen (sovelluksen pääsalasana)
-  async function doGateLogin(){
-    if(!pwInput)return;
-    try{
-      const r=await fetch(API+"/api/gate-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pwInput})});
-      const d=await r.json();
-      if(d.gateToken){localStorage.setItem("pm_gate_token",d.gateToken);setGateToken(d.gateToken);setAuthStep("login");setPwInput("");setPwError(false);}
-      else setPwError(true);
-    }catch{setPwError(true);}
-  }
-  // Käyttäjäkirjautuminen
+  // Kirjautuminen
   async function doUserLogin(){
-    if(!authEmail||!authPw)return;setAuthError("");
+    if(!authUser||!authPw)return;setAuthError("");
     try{
-      const r=await fetch(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail,password:authPw,gateToken})});
+      const r=await fetch(API+"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:authUser.trim(),password:authPw})});
       const d=await r.json();
       if(d.token){
         localStorage.setItem("pm_token",d.token);
-        _lastUserCreds={email:authEmail,password:authPw,gateToken};
+        _lastUserCreds={username:authUser.trim(),password:authPw};
         setCurrentUser(d.user);setAuthed(true);
       }else setAuthError(d.error||t.wrongPw);
     }catch{setAuthError("Yhteysvirhe");}
   }
   // Rekisteröinti
   async function doRegister(){
-    if(!authEmail||!authName||!authPw)return;setAuthError("");
+    if(!authUser||!authPw||!authKey)return;setAuthError("");
     if(authPw.length<6){setAuthError(t.pwTooShort);return;}
+    if(authPw!==authPw2){setAuthError(t.pwMismatch);return;}
     try{
-      const r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:authEmail,name:authName,password:authPw,gateToken})});
+      const r=await fetch(API+"/api/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:authUser.trim(),password:authPw,accessKey:authKey})});
       const d=await r.json();
       if(d.token){
         localStorage.setItem("pm_token",d.token);
-        _lastUserCreds={email:authEmail,password:authPw,gateToken};
+        _lastUserCreds={username:authUser.trim(),password:authPw};
         setCurrentUser(d.user);setAuthed(true);
       }else setAuthError(d.error||"Rekisteröinti epäonnistui");
     }catch{setAuthError("Yhteysvirhe");}
@@ -991,9 +987,38 @@ export default function App() {
   // Uloskirjautuminen
   function doLogout(){
     localStorage.removeItem("pm_token");setAuthed(false);setCurrentUser(null);
-    setAuthStep("login");setAuthEmail("");setAuthPw("");setAuthName("");setAuthError("");
+    setAuthStep("login");setAuthUser("");setAuthPw("");setAuthPw2("");setAuthKey("");setAuthError("");
     setScreen("intro");setMsgs([]);setSlides([]);setStatuses({});
   }
+  // ═══ ADMIN-PANEELI ═══
+  const [showAdmin,setShowAdmin]=useState(false);
+  const [adminUsers,setAdminUsers]=useState([]);
+  const [resetPwId,setResetPwId]=useState(null);
+  const [resetPwVal,setResetPwVal]=useState("");
+  const [adminMsg,setAdminMsg]=useState("");
+  async function loadAdminUsers(){
+    try{
+      const r=await fetch(API+"/api/admin/users",{headers:{"x-session-token":localStorage.getItem("pm_token")||""}});
+      if(r.ok){const d=await r.json();setAdminUsers(d.users||[]);}
+    }catch{}
+  }
+  async function adminResetPw(userId){
+    if(!resetPwVal||resetPwVal.length<6){setAdminMsg(t.pwTooShort);return;}
+    try{
+      const r=await fetch(API+"/api/admin/users/"+userId+"/reset-password",{method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},body:JSON.stringify({newPassword:resetPwVal})});
+      const d=await r.json();
+      setAdminMsg(d.message||d.error);setResetPwId(null);setResetPwVal("");
+    }catch{setAdminMsg("Virhe");}
+  }
+  async function adminDeleteUser(userId,username){
+    if(!confirm(t.confirmDelete+" '"+username+"'?"))return;
+    try{
+      const r=await fetch(API+"/api/admin/users/"+userId,{method:"DELETE",headers:{"x-session-token":localStorage.getItem("pm_token")||""}});
+      const d=await r.json();
+      setAdminMsg(d.message||d.error);loadAdminUsers();
+    }catch{setAdminMsg("Virhe");}
+  }
+
   // Hae käyttäjätiedot tokenilla sivun latautuessa
   useEffect(()=>{
     if(authed&&!currentUser){
@@ -1013,33 +1038,32 @@ export default function App() {
 
   if(!authed){
     const inputStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid "+G.grey,background:"rgba(255,255,255,0.08)",color:G.white,fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:8};
-    const btnStyle={width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer"};
-    const linkStyle={color:G.codeBlue,fontSize:13,cursor:"pointer",textDecoration:"underline",marginTop:12,display:"inline-block"};
+    const btnStyle={width:"100%",background:G.orange,color:G.white,border:"none",borderRadius:10,padding:"12px 0",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4};
+    const linkStyle={color:G.codeBlue,fontSize:13,cursor:"pointer",textDecoration:"underline",marginTop:14,display:"inline-block"};
+    const tabActive={flex:1,padding:"10px 0",border:"none",borderBottom:"2px solid "+G.orange,background:"transparent",color:G.white,fontSize:14,fontWeight:700,cursor:"pointer"};
+    const tabInactive={flex:1,padding:"10px 0",border:"none",borderBottom:"2px solid transparent",background:"transparent",color:G.grey,fontSize:14,fontWeight:500,cursor:"pointer"};
     return(<div style={{minHeight:"100vh",background:G.deepBlue,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',sans-serif"}}><div style={{textAlign:"center",width:340}}>
       <div style={{width:60,height:60,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:G.white,fontWeight:700,margin:"0 auto 20px"}}>G</div>
-      <h2 style={{color:G.white,marginBottom:8}}>{t.title}</h2><LangToggle/>
-      {authStep==="gate"&&<>
-        <p style={{color:G.grey,fontSize:13,marginBottom:12}}>{t.gatePw}</p>
-        <input type="password" value={pwInput} onChange={e=>{setPwInput(e.target.value);setPwError(false);}} onKeyDown={e=>{if(e.key==="Enter")doGateLogin();}} placeholder={t.gatePw} style={{...inputStyle,border:"1.5px solid "+(pwError?G.orange:G.grey)}}/>
-        {pwError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{t.wrongPw}</div>}
-        <button onClick={doGateLogin} style={btnStyle}>{t.login}</button>
-      </>}
+      <h2 style={{color:G.white,marginBottom:6}}>{t.title}</h2>
+      <p style={{color:G.grey,fontSize:13,marginBottom:16}}>{t.subtitle}</p>
+      <LangToggle/>
+      <div style={{display:"flex",marginBottom:20}}>
+        <button onClick={()=>{setAuthStep("login");setAuthError("");}} style={authStep==="login"?tabActive:tabInactive}>{t.login}</button>
+        <button onClick={()=>{setAuthStep("register");setAuthError("");}} style={authStep==="register"?tabActive:tabInactive}>{t.register}</button>
+      </div>
       {authStep==="login"&&<>
-        <p style={{color:G.grey,fontSize:13,marginBottom:12}}>{t.loginTitle}</p>
-        <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder={t.email} style={inputStyle}/>
-        <input type="password" value={authPw} onChange={e=>setAuthPw(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doUserLogin();}} placeholder={t.password} style={inputStyle}/>
+        <input type="text" value={authUser} onChange={e=>setAuthUser(e.target.value)} placeholder={t.username} style={inputStyle} autoComplete="username"/>
+        <input type="password" value={authPw} onChange={e=>setAuthPw(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doUserLogin();}} placeholder={t.password} style={inputStyle} autoComplete="current-password"/>
         {authError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{authError}</div>}
-        <button onClick={doUserLogin} style={btnStyle}>{t.login}</button>
-        <span onClick={()=>{setAuthStep("register");setAuthError("");}} style={linkStyle}>{t.noAccount}</span>
+        <button onClick={doUserLogin} style={btnStyle}>{t.login} →</button>
       </>}
       {authStep==="register"&&<>
-        <p style={{color:G.grey,fontSize:13,marginBottom:12}}>{t.registerTitle}</p>
-        <input type="text" value={authName} onChange={e=>setAuthName(e.target.value)} placeholder={t.name} style={inputStyle}/>
-        <input type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder={t.email} style={inputStyle}/>
-        <input type="password" value={authPw} onChange={e=>setAuthPw(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doRegister();}} placeholder={t.password} style={inputStyle}/>
+        <input type="text" value={authUser} onChange={e=>setAuthUser(e.target.value)} placeholder={t.username} style={inputStyle} autoComplete="username"/>
+        <input type="password" value={authPw} onChange={e=>setAuthPw(e.target.value)} placeholder={t.password} style={inputStyle} autoComplete="new-password"/>
+        <input type="password" value={authPw2} onChange={e=>setAuthPw2(e.target.value)} placeholder={t.passwordAgain} style={inputStyle} autoComplete="new-password"/>
+        <input type="text" value={authKey} onChange={e=>setAuthKey(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doRegister();}} placeholder={t.accessKey} style={inputStyle}/>
         {authError&&<div style={{color:G.orange,fontSize:13,marginBottom:8}}>{authError}</div>}
-        <button onClick={doRegister} style={btnStyle}>{t.register}</button>
-        <span onClick={()=>{setAuthStep("login");setAuthError("");}} style={linkStyle}>{t.hasAccount}</span>
+        <button onClick={doRegister} style={btnStyle}>{t.register} →</button>
       </>}
     </div></div>);
   }
@@ -1070,7 +1094,8 @@ export default function App() {
         <div style={{width:28,height:28,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:G.white,fontWeight:700,fontSize:12}}>G</div>
         <div style={{flex:1}}><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11}}>{phaseText}</div></div>
         {currentUser&&<div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{color:G.grey,fontSize:12}}>{currentUser.name}</span>
+          <span style={{color:G.grey,fontSize:12}}>{currentUser.username}</span>
+          {currentUser.is_admin===1&&<button onClick={()=>{setShowAdmin(true);loadAdminUsers();setAdminMsg("");}} style={{background:"transparent",border:"1px solid "+G.mint,borderRadius:6,padding:"4px 10px",color:G.mint,fontSize:11,cursor:"pointer"}}>{t.admin}</button>}
           <button onClick={doLogout} style={{background:"transparent",border:"1px solid "+G.grey,borderRadius:6,padding:"4px 10px",color:G.grey,fontSize:11,cursor:"pointer"}}>{t.logout}</button>
         </div>}
       </div>
@@ -1083,6 +1108,36 @@ export default function App() {
         })}
         {busy&&<div style={{display:"flex",gap:10}}><div style={{width:32,height:32,borderRadius:"50%",background:G.deepBlue,color:G.orange,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12}}>G</div><div style={{background:G.white,borderRadius:"3px 14px 14px 14px",padding:"12px 16px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><span style={{color:G.grey,letterSpacing:6,fontSize:16}}>● ● ●</span></div></div>}
         <div ref={bottom}/>
+        {showAdmin&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)setShowAdmin(false);}}>
+          <div style={{background:G.white,borderRadius:16,padding:28,width:500,maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <h2 style={{margin:0,color:G.deepBlue,fontSize:18}}>{t.adminUsers}</h2>
+              <button onClick={()=>setShowAdmin(false)} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:G.grey}}>×</button>
+            </div>
+            {adminMsg&&<div style={{background:G.light,border:"1px solid "+G.silver,borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:13,color:G.deepBlue}}>{adminMsg}</div>}
+            {adminUsers.map(u=><div key={u.id} style={{border:"1px solid "+G.silver,borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <span style={{fontWeight:600,color:G.deepBlue,fontSize:14}}>{u.username}</span>
+                  {u.id===currentUser?.id&&<span style={{color:G.mint,fontSize:12,marginLeft:6}}>{t.you}</span>}
+                  {u.is_admin===1&&<span style={{background:G.orange,color:G.white,fontSize:10,padding:"2px 6px",borderRadius:4,marginLeft:6}}>admin</span>}
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>{setResetPwId(resetPwId===u.id?null:u.id);setResetPwVal("");}} style={{background:"transparent",border:"1px solid "+G.digitalBlue,borderRadius:6,padding:"3px 8px",color:G.digitalBlue,fontSize:11,cursor:"pointer"}}>{t.resetPw}</button>
+                  {u.id!==currentUser?.id&&<button onClick={()=>adminDeleteUser(u.id,u.username)} style={{background:"transparent",border:"1px solid "+G.orange,borderRadius:6,padding:"3px 8px",color:G.orange,fontSize:11,cursor:"pointer"}}>{t.deleteUser}</button>}
+                </div>
+              </div>
+              <div style={{color:G.grey,fontSize:11,marginTop:4}}>
+                {u.created_at&&<span>Luotu: {new Date(u.created_at+"Z").toLocaleDateString()}</span>}
+                {u.last_login&&<span style={{marginLeft:12}}>Viimeksi: {new Date(u.last_login+"Z").toLocaleDateString()}</span>}
+              </div>
+              {resetPwId===u.id&&<div style={{display:"flex",gap:6,marginTop:8}}>
+                <input type="text" value={resetPwVal} onChange={e=>setResetPwVal(e.target.value)} placeholder={t.newPw} style={{flex:1,padding:"6px 10px",borderRadius:6,border:"1px solid "+G.silver,fontSize:13,outline:"none"}}/>
+                <button onClick={()=>adminResetPw(u.id)} style={{background:G.digitalBlue,color:G.white,border:"none",borderRadius:6,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>OK</button>
+              </div>}
+            </div>)}
+          </div>
+        </div>}
       </div>
       {attachments.length>0&&<div style={{background:G.white,borderTop:"1px solid "+G.silver,padding:"8px 16px",display:"flex",flexWrap:"wrap",gap:6}}>
         {attachments.map((a,i)=><div key={i} style={{background:G.light,border:"1px solid "+G.silver,borderRadius:6,padding:"3px 10px",fontSize:12,color:G.deepBlue,display:"flex",alignItems:"center",gap:6}}>📄 {a.name}<span style={{cursor:"pointer",color:G.grey}} onClick={()=>setAttachments(p=>p.filter((_,j)=>j!==i))}>×</span></div>)}
