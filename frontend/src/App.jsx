@@ -595,12 +595,14 @@ function App() {
 
   async function runFocusConfirm(userText){
     const fi=langRef.current==="fi";
-    const lower=userText.trim().toLowerCase();
+    // Eristä fokusvalinta tiedostosisällöstä: ota vain ensimmäinen rivi
+    const firstLine=userText.trim().split("\n")[0].trim();
+    const lower=firstLine.toLowerCase();
     // Tarkista onko tämä oikeasti fokusvalinta vai jotain muuta
-    const isFocusChoice=/^[1-6]\.?$/.test(lower) || 
+    const isFocusChoice=/^[1-6]\.?$/.test(lower) ||
       ["projektisuunnitelma","riskianalyysi","aikataulu","kickoff","sidosryhmä","muu",
        "project plan","risk analysis","timeline","stakeholder","other"].some(w=>lower.includes(w));
-    
+
     if(!isFocusChoice){
       // Ei ole fokusvalinta — voi olla kielitoive, kysymys tms. Lähetä takaisin AI:lle
       const r=await api([...recentMessages(2),{role:"user",content:userText}],
@@ -610,7 +612,7 @@ function App() {
       return;  // Jää focus-vaiheeseen
     }
 
-    setFocusType(userText.trim());focusTypeRef.current=userText.trim();
+    const focusLabel=firstLine.substring(0,100);setFocusType(focusLabel);focusTypeRef.current=focusLabel;
     updateSummary("FOKUS: "+userText.trim());
     setScreenSync("insights");addDivider("🔍 "+(fi?"Vaihe 3":"Phase 3"));
     const insightPrompt=fi
@@ -1762,7 +1764,7 @@ function App() {
       <div style={{background:G.deepBlue,padding:"8px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <button onClick={goBackToIntro} style={{background:"transparent",border:"1px solid "+G.grey,borderRadius:6,padding:"4px 10px",color:G.codeBlue,fontSize:11,cursor:"pointer",fontWeight:600,flexShrink:0}}>{t.backToMain}</button>
         <div style={{width:28,height:28,background:G.orange,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:G.white,fontWeight:700,fontSize:12}}>G</div>
-        <div style={{flex:1}}><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11}}>{phaseText}</div></div>
+        <div style={{flex:1,minWidth:0,overflow:"hidden"}}><div style={{color:G.white,fontWeight:600,fontSize:13}}>{t.title}</div><div style={{color:G.codeBlue,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{phaseText}</div></div>
         {currentUser&&<div style={{display:"flex",alignItems:"center",gap:8}}>
           {activeProfile&&<span style={{background:G.orange,color:G.white,fontSize:10,padding:"2px 8px",borderRadius:4}}>{activeProfile.name}</span>}
           <button onClick={()=>saveProject()} disabled={savingProject} style={{background:"transparent",border:"1px solid "+G.mint,borderRadius:6,padding:"4px 10px",color:G.mint,fontSize:11,cursor:savingProject?"not-allowed":"pointer",fontWeight:600}}>{savingProject?"...":t.saveProject}</button>
