@@ -110,9 +110,17 @@ function getSystem(lang) {
   const today = new Date().toLocaleDateString(lang==="fi"?"fi-FI":"en-US",{year:"numeric",month:"long",day:"numeric"});
   if (lang==="fi") return `Olet kokenut projektikonsultti Goforella. Kommunikoi AINA suomeksi.
 TÄNÄÄN ON: ${today}.
-ROOLISI: Olet osa sovellusta joka generoi PowerPoint-tiedoston. Roolisi on kerätä sisältö keskustelemalla JA ANALYSOIDA materiaalia.
+ROOLISI: Olet osa sovellusta joka generoi PowerPoint- tai Word-tiedoston. Roolisi on kerätä sisältö keskustelemalla JA ANALYSOIDA materiaalia.
+
+KRIITTINEN SÄÄNTÖ — MATERIAALIEN KÄYTTÖ:
+Sinulle annetaan LÄHDEMATERIAALIT-osio joka sisältää käyttäjän lataamat tiedostot. LUE NE TARKASTI.
+- Käytä VAIN lähdemateriaalien nimiä, lukuja, hintoja ja tietoja. ÄLÄ KOSKAAN korvaa niitä omilla keksityillä.
+- Jos lähdemateriaalissa lukee "SensorTech Finland 195 000 €", käytä TÄSMÄLLEEN "SensorTech Finland" ja "195 000 €".
+- Jos materiaali puuttuu tai on epäselvä → KYSY käyttäjältä. ÄLÄ täydennä puuttuvaa tietoa keksimällä.
+- Tarkista JOKAINEN nimi, luku ja hinta lähdemateriaalista ennen kuin käytät sitä.
+
 SÄÄNNÖT:
-1. ÄLÄ keksi tietoja. Käytä VAIN annettuja materiaaleja.
+1. ÄLÄ keksi tietoja. Käytä VAIN annettuja materiaaleja. TARKISTA jokainen fakta materiaaleista.
 2. Puuttuva tieto → KYSY.
 3. Ole ytimekäs, max 2-3 kappaletta.
 4. Käsittele VAIN pyydetty asia.
@@ -134,9 +142,17 @@ SÄÄNNÖT:
 ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja.`;
   return `You are an experienced project consultant at Gofore. ALWAYS communicate in English.
 TODAY IS: ${today}.
-ROLE: You collect content through conversation for an automatic PowerPoint generator AND ANALYZE the material.
+ROLE: You collect content through conversation for an automatic PowerPoint or Word document generator AND ANALYZE the material.
+
+CRITICAL RULE — USE OF SOURCE MATERIALS:
+You will receive a SOURCE MATERIALS section containing user-uploaded files. READ THEM CAREFULLY.
+- Use ONLY the names, numbers, prices and data from source materials. NEVER replace them with invented ones.
+- If source material says "SensorTech Finland €195,000", use EXACTLY "SensorTech Finland" and "€195,000".
+- If material is missing or unclear → ASK the user. NEVER fill in missing data by inventing it.
+- VERIFY EVERY name, number and price from source materials before using it.
+
 RULES:
-1. NEVER invent data.
+1. NEVER invent data. Use ONLY provided materials. VERIFY every fact from materials.
 2. Missing info → ASK.
 3. Be concise.
 4. Handle ONLY current topic.
@@ -280,7 +296,7 @@ async function convertToJSON(slideLabel, layout, proposalText, lang) {
   else if (layout === "line_chart") extra = "\n\nVIIVAKAAVIO: categories = X-akseli (ajanjaksot). series = trendilinjat. values = lukuja.";
   else if (layout === "kpi") extra = "\n\nKPI-LAYOUT: 2-4 avainlukua. Jokainen: value (iso luku, esim '€420k', '2.3v', '+30%'), label (lyhyt otsikko), desc (1 lause). Luvut ovat ISOJA — tee niistä vaikuttavia.";
   const r = await callAPI([{role:"user",content:
-    `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,3000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä. Luvut AINA numeroina (ei "420k" vaan 420000).${extra}`}],
+    `Muunna dian sisältö JSON-muotoon.\nDIA: "${slideLabel}" (${layout})\nSKEEMA: ${schemas[layout]||schemas.bullets}\n\nSISÄLTÖ:\n---\n${proposalText.substring(0,6000)}\n---\n\nVastaa VAIN JSON. ÄLÄ keksi uutta. JOKAINEN kohta/rivi/vaihe sisällöstä PITÄÄ olla JSON:ssa. ÄLÄ tiivistä. Luvut AINA numeroina (ei "420k" vaan 420000).${extra}`}],
     "Olet JSON-muunnin. Vastaa VAIN validilla JSON-objektilla.", false, lang);
   try {
     const m=r.match(/\{[\s\S]*\}/);
@@ -474,7 +490,7 @@ function App() {
         statuses:Object.fromEntries(slidesRef.current.map(s=>[s.id,statuses[s.id]||"pending"])),
         summary:summaryRef.current,
         decisions:decisionsRef.current,
-        docContext:docContextRef.current?.substring(0,3000),
+        docContext:docContextRef.current?.substring(0,12000),
         focus:focusTypeRef.current,
         proposals:lastProposalRef.current,
         ts:Date.now(),
@@ -536,15 +552,15 @@ function App() {
     let c="";
     if(summaryRef.current)c+=summaryRef.current+"\n\n";
     if(decisionsRef.current.length>0)c+="═══ TEHDYT PÄÄTÖKSET (EHDOTTOMAT — ÄLÄ MUUTA) ═══\n"+decisionsRef.current.map((d,i)=>(i+1)+". "+d).join("\n")+"\n═══════════════════════════════════\n\n";
-    if(docContextRef.current)c+="LÄHDEMATERIAALIT:\n"+docContextRef.current.substring(0,3000)+"\n\n";
+    if(docContextRef.current)c+="LÄHDEMATERIAALIT:\n"+docContextRef.current.substring(0,12000)+"\n\n";
     if(focusTypeRef.current)c+="FOKUS: "+focusTypeRef.current+"\n\n";
     return c;
   }
   function recentMessages(n){const all=msgs.filter(m=>m.role==="user"||m.role==="assistant");return all.slice(-(n*2)).map(m=>({role:m.role,content:m.content}));}
   function updateSummary(note){
     summaryRef.current=(summaryRef.current?summaryRef.current+"\n":"")+note;
-    // Rajoita kontekstin kasvua: jos yli 2500 merkkiä, tiivistä alku
-    if(summaryRef.current.length>2500){
+    // Rajoita kontekstin kasvua: jos yli 5000 merkkiä, tiivistä alku
+    if(summaryRef.current.length>5000){
       const lines=summaryRef.current.split("\n");
       // Pidä viimeiset 2/3 ja tiivistä alku
       const keep=Math.max(Math.floor(lines.length*0.66),3);
@@ -974,13 +990,13 @@ function App() {
       const isDocx=outputTypeRef.current==="docx";
       const itemName=fi?(isDocx?"luku":"dia"):(isDocx?"chapter":"slide");
       const slidesSummary=cur.map((s,i)=>{
-        const proposal=(lastProposalRef.current[s.id]||"").substring(0,800);
+        const proposal=(lastProposalRef.current[s.id]||"").substring(0,1500);
         return `${itemName.toUpperCase()} ${i+1}/${cur.length}: "${s.label}" (${s.layout})\n${proposal}`;
       }).join("\n\n---\n\n");
 
       const checkPrompt=fi
-        ?`Alla on kaikkien ${cur.length} ${itemName}n sisällöt.\n\nTarkista VAIN nämä:\n1. LUKURISTIRIIDAT: Esiintyykö SAMA tieto eri luvuilla? Listaa VAIN varmat ristiriidat.\n2. SUOSITUSRISTIRIIDAT: Suositellaanko eri kohdissa eri vaihtoehtoa?\n\nTÄRKEÄÄ:\n- ÄLÄ väitä osien puuttuvan — kaikki ${cur.length} ovat olemassa\n- ÄLÄ ehdota uusia osia\n- ÄLÄ keksi ongelmia\n- Jos ei ristiriitoja: "Tarkistus OK — ei ristiriitoja havaittu."\n- Max 3-5 riviä\n\nSISÄLLÖT:\n${slidesSummary.substring(0,4000)}`
-        :`Below are all ${cur.length} ${itemName} contents.\n\nCheck ONLY:\n1. NUMBER CONTRADICTIONS: Same fact with different numbers?\n2. RECOMMENDATION CONTRADICTIONS: Different sections recommend different options?\n\nIMPORTANT:\n- Do NOT claim parts are missing — all ${cur.length} exist\n- Do NOT suggest new parts\n- Do NOT invent problems\n- If no contradictions: "Check OK — no contradictions found."\n- Max 3-5 lines\n\nCONTENTS:\n${slidesSummary.substring(0,4000)}`;
+        ?`Alla on kaikkien ${cur.length} ${itemName}n sisällöt.\n\nTarkista VAIN nämä:\n1. LUKURISTIRIIDAT: Esiintyykö SAMA tieto eri luvuilla? Listaa VAIN varmat ristiriidat.\n2. SUOSITUSRISTIRIIDAT: Suositellaanko eri kohdissa eri vaihtoehtoa?\n\nTÄRKEÄÄ:\n- ÄLÄ väitä osien puuttuvan — kaikki ${cur.length} ovat olemassa\n- ÄLÄ ehdota uusia osia\n- ÄLÄ keksi ongelmia\n- Jos ei ristiriitoja: "Tarkistus OK — ei ristiriitoja havaittu."\n- Max 3-5 riviä\n\nSISÄLLÖT:\n${slidesSummary.substring(0,8000)}`
+        :`Below are all ${cur.length} ${itemName} contents.\n\nCheck ONLY:\n1. NUMBER CONTRADICTIONS: Same fact with different numbers?\n2. RECOMMENDATION CONTRADICTIONS: Different sections recommend different options?\n\nIMPORTANT:\n- Do NOT claim parts are missing — all ${cur.length} exist\n- Do NOT suggest new parts\n- Do NOT invent problems\n- If no contradictions: "Check OK — no contradictions found."\n- Max 3-5 lines\n\nCONTENTS:\n${slidesSummary.substring(0,8000)}`;
 
       const r=await api([{role:"user",content:checkPrompt}],"VAIHE: Laaduntarkistus. ÄLÄ keksi ongelmia.",false,langRef.current);
       addMsg("assistant",strip(r));
@@ -1266,12 +1282,12 @@ function App() {
       screen:screenRef.current,slides:slidesRef.current,slideIdx:slideIdxRef.current,
       collected:collectedRef.current,statuses:Object.fromEntries(slidesRef.current.map(s=>[s.id,statuses[s.id]||"pending"])),
       summary:summaryRef.current,decisions:decisionsRef.current,
-      docContext:docContextRef.current?.substring(0,3000),focus:focusTypeRef.current,
+      docContext:docContextRef.current?.substring(0,12000),focus:focusTypeRef.current,
       proposals:lastProposalRef.current,msgs:msgs.slice(-50),profileId:activeProfileRef.current?.id||null,
       outputType:outputTypeRef.current||"pptx",
     };
     // Tallenna jaettu konteksti projektille
-    const ctx={summary:summaryRef.current||"",docContext:docContextRef.current?.substring(0,3000)||"",decisions:decisionsRef.current||[]};
+    const ctx={summary:summaryRef.current||"",docContext:docContextRef.current?.substring(0,12000)||"",decisions:decisionsRef.current||[]};
     try{
       // Päivitä projektin jaettu konteksti
       if(currentProjectId){

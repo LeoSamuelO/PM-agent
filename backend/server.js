@@ -465,7 +465,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const { messages, system, useSearch } = req.body;
   if (!messages?.length) return res.status(400).json({ error: "messages puuttuu" });
   try {
-    const params = { model: "claude-sonnet-4-20250514", max_tokens: 4000, system: system || "Olet projektikonsultti.", messages };
+    const params = { model: "claude-sonnet-4-20250514", max_tokens: 8000, system: system || "Olet projektikonsultti.", messages };
     if (useSearch) params.tools = [{ type: "web_search_20250305", name: "web_search" }];
     const r = await client.messages.create(params);
     res.json({ text: r.content.filter(b => b.type === "text").map(b => b.text).join("\n") });
