@@ -221,15 +221,17 @@ async function fetchWithRetry(url, options, { timeout = 90000, retries = 2 } = {
   }
 }
 
-async function callAPI(messages, systemExtra, forceSearch, lang, profileInstructions) {
+async function callAPI(messages, systemExtra, forceSearch, lang, profileInstructions, maxTokens) {
   let system = systemExtra ? getSystem(lang||"fi")+"\n\n"+systemExtra : getSystem(lang||"fi");
   if (profileInstructions) system += "\n\n═══ AGENTTIPROFIILI (käyttäjän lisäohjeet) ═══\n" + profileInstructions;
   // Tarkista kaikkien viimeisten viestien sisältö — ei vain viimeistä käyttäjäviestiä
   const recentTexts = messages.slice(-3).map(m => m.content).join(" ");
   const useSearch = forceSearch || shouldSearch(recentTexts);
+  const payload = {messages,system,useSearch};
+  if(maxTokens)payload.maxTokens=maxTokens;
   const r = await fetchWithRetry(API+"/api/chat",{
     method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
-    body:JSON.stringify({messages,system,useSearch}),
+    body:JSON.stringify(payload),
   }, { timeout: useSearch ? 120000 : 90000 }); // Search-kutsut saavat enemmän aikaa
   const d = await r.json();
   if(r.status===401){
@@ -239,7 +241,7 @@ async function callAPI(messages, systemExtra, forceSearch, lang, profileInstruct
       // Toista alkuperäinen pyyntö uudella tokenilla
       const r2 = await fetchWithRetry(API+"/api/chat",{
         method:"POST",headers:{"Content-Type":"application/json","x-session-token":localStorage.getItem("pm_token")||""},
-        body:JSON.stringify({messages,system,useSearch}),
+        body:JSON.stringify(payload),
       }, { timeout: useSearch ? 120000 : 90000 });
       const d2 = await r2.json();
       if(r2.status===401) throw new Error("Istunto vanhentunut — kirjaudu uudelleen.");
@@ -477,7 +479,7 @@ function App() {
   function setSlideIdxSync(v){setSlideIdx(v);slideIdxRef.current=v;}
   const addMsg=useCallback((role,content)=>setMsgs(p=>[...p,{role,content}]),[]);
   const addDivider=useCallback((text)=>setMsgs(p=>[...p,{type:"divider",content:text}]),[]);
-  const api=useCallback((msgs,extra,search)=>callAPI(msgs,extra,search,langRef.current,activeProfileRef.current?.instructions||""),[]);
+  const api=useCallback((msgs,extra,search,lang,maxTokens)=>callAPI(msgs,extra,search,lang||langRef.current,activeProfileRef.current?.instructions||"",maxTokens),[]);
 
   // ═══ SESSION RECOVERY: Tallenna tila localStorageen ═══
   function saveSession(){
@@ -788,7 +790,7 @@ function App() {
     const prompt=fi
       ?`Kirjoita KOKO dokumentti yhtenä koherenttina tekstinä.\n\nLukurakenne:\n${chapterList}\n\nSÄÄNNÖT:\n- Käytä # -otsikkoja luvuille\n- Jokainen luku: 2-5 yksityiskohtaista kappaletta\n- Analysoi, perustele, tee johtopäätöksiä — älä vain listaa\n- Jos lukuja → laske ja näytä kaavat\n- Ammattimainen, asiantunteva sävy\n- Loogiset siirtymät lukujen välillä\n- Taulukot markdown-muodossa (| sarake1 | sarake2 |)\n- Tämän pitää olla VALMIS, julkaisuvalmis teksti\n\nKirjoita kaikki luvut kerralla. Aloita suoraan sisällöstä.`
       :`Write the ENTIRE document as one coherent text.\n\nChapter structure:\n${chapterList}\n\nRULES:\n- Use # headers for chapters\n- Each chapter: 2-5 detailed paragraphs\n- Analyze, justify, draw conclusions — don't just list\n- If numbers → calculate and show formulas\n- Professional, expert tone\n- Logical transitions between chapters\n- Tables in markdown (| col1 | col2 |)\n- Must be COMPLETE, publication-ready text\n\nWrite all chapters at once. Start directly with content.`;
-    const r=await api([{role:"user",content:prompt}],"VAIHE: Dokumentin kirjoitus. Kirjoita KOKO dokumentti.\n"+buildContext());
+    const r=await api([{role:"user",content:prompt}],"VAIHE: Dokumentin kirjoitus. Kirjoita KOKO dokumentti.\n"+buildContext(),false,null,8000);
     const docText=strip(r);
     lastProposalRef.current["full_document"]=docText;
     // Merkitse kaikki luvut tehdyiksi
@@ -811,7 +813,7 @@ function App() {
     const prompt=fi
       ?`Dokumentin nykyinen versio:\n---\n${currentDoc}\n---\n\nKäyttäjän muutospyyntö: "${userText}"\n\nTee pyydetyt muutokset ja näytä KOKO päivitetty dokumentti. Säilytä # -otsikot ja markdown-muotoilu.`
       :`Current document:\n---\n${currentDoc}\n---\n\nUser's change request: "${userText}"\n\nMake the requested changes and show the FULL updated document. Keep # headers and markdown formatting.`;
-    const r=await api([{role:"user",content:prompt}],"VAIHE: Dokumentin muokkaus.\n"+buildContext());
+    const r=await api([{role:"user",content:prompt}],"VAIHE: Dokumentin muokkaus.\n"+buildContext(),false,null,8000);
     const updated=strip(r);
     lastProposalRef.current["full_document"]=updated;
     addMsg("assistant",updated);
