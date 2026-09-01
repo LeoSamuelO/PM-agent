@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gofore PPTX builder — käyttää template.pptx -pohjaa
+PPTX builder — käyttää template.pptx -pohjaa
 Kutsutaan: python3 build_pptx.py '<json>' '<output_path>'
 """
 import sys
