@@ -491,7 +491,7 @@ app.post("/api/build-pptx", async (req, res) => {
 
   const outPath = path.join(__dirname, "pptx_" + Date.now() + ".pptx");
   const script = path.join(__dirname, "build_pptx.py");
-  const tmpl = path.join(__dirname, "Gofore_Template.pptx");
+  const tmpl = path.join(__dirname, "template.pptx");
 
   console.log("📁 Script:", script, "exists:", fs.existsSync(script));
   console.log("📁 Template:", tmpl, "exists:", fs.existsSync(tmpl));
@@ -504,7 +504,7 @@ app.post("/api/build-pptx", async (req, res) => {
         await runPython(pythonCmd, script, JSON.stringify({ slideData, slideStructure, lang: lang || "fi" }), outPath);
 
         if (fs.existsSync(outPath)) {
-          console.log("✅ Gofore-template PPTX OK");
+          console.log("✅ template PPTX OK");
           return res.download(outPath, fileName, () => fs.unlink(outPath, () => {}));
         }
       }
@@ -548,7 +548,7 @@ app.post("/api/build-docx", async (req, res) => {
         await runPythonDocx(pythonCmd, script, JSON.stringify({ documentText, chapters: chapters || [], lang: lang || "fi" }), outPath);
 
         if (fs.existsSync(outPath)) {
-          console.log("✅ Gofore DOCX OK");
+          console.log("✅ DOCX OK");
           return res.download(outPath, fileName, () => fs.unlink(outPath, () => {}));
         }
       }
@@ -701,7 +701,7 @@ async function buildFallbackPPTX(data, structure) {
       s.addText(d.tagline||"",{x:0.9,y:3.75,w:9,h:0.5,fontSize:15,fontFace:F,color:C.orange,margin:0});
       s.addText(d.meta||"",{x:0.9,y:4.35,w:9.5,h:0.32,fontSize:12,fontFace:F,color:C.silver,margin:0});
       if(d.projectLead) s.addText("PM: "+d.projectLead,{x:0.9,y:4.72,w:9.5,h:0.32,fontSize:12,fontFace:F,color:C.silver,margin:0});
-      s.addText("GOFORE",{x:0.6,y:6.9,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
+      s.addText("",{x:0.6,y:6.9,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
     } else if (sd.layout==="gantt") {
       const s=pres.addSlide(); s.background={color:C.white}; hdr(s,d.heading||sd.label);
       const tw=d.totalWeeks||8,phases=d.phases||[],wcw=(12.3-3.2)/tw,tl=0.4,tt=0.82,pcw=3.2,rh=0.48,hh=0.36;
@@ -737,10 +737,10 @@ async function buildFallbackPPTX(data, structure) {
       bullets.slice(0,10).forEach((b,i)=>{s.addShape(pres.shapes.RECTANGLE,{x:0.5,y:0.88+i*rh,w:0.06,h:rh-0.2,fill:{color:C.orange}});s.addText(b,{x:0.75,y:0.88+i*rh,w:12,h:rh,fontSize:fs2,fontFace:F,color:C.deepBlue,valign:"middle",margin:0});});
     }
   }
-  const es=pres.addSlide();es.background={color:C.deepBlue};es.addText("Pioneering\nan ethical\ndigital world.",{x:0.8,y:1.8,w:8,h:2.8,fontSize:34,fontFace:F,bold:true,color:C.white,margin:0});es.addText("GOFORE",{x:0.8,y:6.85,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
+  const es=pres.addSlide();es.background={color:C.deepBlue};es.addText("Pioneering\nan ethical\ndigital world.",{x:0.8,y:1.8,w:8,h:2.8,fontSize:34,fontFace:F,bold:true,color:C.white,margin:0});es.addText("",{x:0.8,y:6.85,w:3,h:0.35,fontSize:12,fontFace:F,bold:true,color:C.orange,charSpacing:5,margin:0});
   const out=path.join(__dirname,"pptx_fb_"+Date.now()+".pptx");
   await pres.writeFile({fileName:out}); return out;
 }
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`✅ Gofore agentti portissa ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Agentti portissa ${PORT}`));

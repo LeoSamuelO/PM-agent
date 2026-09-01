@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gofore PPTX builder — käyttää Gofore_Template.pptx -pohjaa
+Gofore PPTX builder — käyttää template.pptx -pohjaa
 Kutsutaan: python3 build_pptx.py '<json>' '<output_path>'
 """
 import sys
@@ -11,10 +11,10 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Gofore_Template.pptx")
+TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.pptx")
 # Fallback: etsi CWD:stä jos ei löydy skriptin vierestä
 if not os.path.exists(TEMPLATE_PATH):
-    alt = os.path.join(os.getcwd(), "Gofore_Template.pptx")
+    alt = os.path.join(os.getcwd(), "template.pptx")
     if os.path.exists(alt):
         TEMPLATE_PATH = alt
 

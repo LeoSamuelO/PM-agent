@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Word-dokumentin generointi Gofore-brändillä.
+Word-dokumentin generointi.
 Vastaanottaa markdown-muotoisen dokumenttitekstin ja luo tyylitellyn .docx-tiedoston.
 Käyttö: python build_docx.py --stdin output.docx
         python build_docx.py --file input.json output.docx
@@ -14,7 +14,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
 
-# ═══ GOFORE VÄRIT ═══
+# ═══ VÄRIT ═══
 DEEP_BLUE = RGBColor(0x0C, 0x23, 0x40)
 DIGITAL_BLUE = RGBColor(0x1B, 0x6C, 0xA8)
 ORANGE = RGBColor(0xE8, 0x52, 0x1A)
@@ -91,7 +91,7 @@ def create_docx(data, out_path):
 
     doc.add_paragraph()
     p = doc.add_paragraph()
-    run = p.add_run("GOFORE")
+    run = p.add_run("")
     run.font.size = Pt(11)
     run.font.bold = True
     run.font.color.rgb = ORANGE
@@ -148,11 +148,10 @@ def add_cover_page(doc, text, chapters):
         run.font.size = Pt(14)
         run.font.color.rgb = ORANGE
 
-    # Gofore
     for _ in range(6):
         doc.add_paragraph()
     p = doc.add_paragraph()
-    run = p.add_run("GOFORE")
+    run = p.add_run("")
     run.font.size = Pt(11)
     run.font.bold = True
     run.font.color.rgb = ORANGE
@@ -331,7 +330,7 @@ def parse_table_lines(lines):
 
 
 def add_styled_table(doc, table_data):
-    """Luo tyylitelty taulukko Gofore-brändillä."""
+    """Luo tyylitelty taulukko """
     if not table_data or len(table_data) < 2:
         return
 
