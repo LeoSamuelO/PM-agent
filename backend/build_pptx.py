@@ -18,7 +18,7 @@ if not os.path.exists(TEMPLATE_PATH):
     if os.path.exists(alt):
         TEMPLATE_PATH = alt
 
-# Gofore värit
+# värit
 C = {
     "deepBlue":    RGBColor(0x0C, 0x23, 0x40),
     "digitalBlue": RGBColor(0x1B, 0x6C, 0xA8),
@@ -715,11 +715,11 @@ def build_bar_chart_slide(prs, d, def_label):
         chart.legend.font.name = FONT
 
     # Värit
-    gofore_colors = [C["digitalBlue"], C["orange"], C["mint"], C["grey"]]
+    colors = [C["digitalBlue"], C["orange"], C["mint"], C["grey"]]
     for si, series in enumerate(chart.series):
         fill = series.format.fill
         fill.solid()
-        fill.fore_color.rgb = gofore_colors[si % len(gofore_colors)]
+        fill.fore_color.rgb = colors[si % len(colors)]
 
     # Akselit
     chart.category_axis.tick_labels.font.size = Pt(9)
@@ -776,13 +776,13 @@ def build_pie_chart_slide(prs, d, def_label):
     chart.legend.font.name = FONT
 
     # Värit
-    gofore_colors = [C["deepBlue"], C["digitalBlue"], C["orange"], C["mint"],
+    colors = [C["deepBlue"], C["digitalBlue"], C["orange"], C["mint"],
                      C["grey"], RGBColor(0x5B, 0xA4, 0xCF), RGBColor(0xA0, 0x56, 0x8A)]
     plot = chart.plots[0]
     for i, point in enumerate(plot.series[0].points):
         fill = point.format.fill
         fill.solid()
-        fill.fore_color.rgb = gofore_colors[i % len(gofore_colors)]
+        fill.fore_color.rgb = colors[i % len(colors)]
 
     # Datalabelit
     plot.has_data_labels = True
@@ -839,9 +839,9 @@ def build_line_chart_slide(prs, d, def_label):
         chart.legend.font.size = Pt(9)
         chart.legend.font.name = FONT
 
-    gofore_colors = [C["digitalBlue"], C["orange"], C["mint"]]
+    colors = [C["digitalBlue"], C["orange"], C["mint"]]
     for si, series in enumerate(chart.series):
-        series.format.line.color.rgb = gofore_colors[si % len(gofore_colors)]
+        series.format.line.color.rgb = colors[si % len(colors)]
         series.format.line.width = Pt(2.5)
 
     chart.category_axis.tick_labels.font.size = Pt(9)

@@ -56,11 +56,11 @@ const T = {
     enterPresentationName:"Anna esitykselle nimi",noPresentations:"Ei esityksiä vielä.",openProject:"Avaa",
     sharedContext:"Jaettu konteksti",interviewDone:"Haastattelu tehty",interviewNotDone:"Aloita haastattelusta",
     continuePresentation:"Jatka",deletePresentation:"Poista",
-    steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Sisältö","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis","Gofore-teemainen dokumentti"]],
+    steps:[["💬","Haastattelu","Kerro projektistasi"],["🔍","Havainnot","Tunnistan riskit ja vaihtoehdot"],["🤝","Sisältö","Ehdotan sisällön, sinä vahvistat"],["📊","Valmis","dokumentti"]],
     phases:{interview:"💬 Vaihe 1 — Haastattelu",focus:"🎯 Vaihe 2 — Fokus",insights:"🔍 Vaihe 3 — Havainnot",structure:"📐 Vaihe 4 — Rakenne",planning:"📄 Vaihe 5 — Sisältö",deepdive:"🔍 Vaihe 5 — Tarkennukset",writing:"✍️ Vaihe 6 — Dokumentin kirjoitus",review:"👀 Loppukatsaus",ready:"✅ Valmis"},
     slides:"Osat",chapters:"Luvut",redownload:"🚀 Lataa uudelleen",
     placeholder:{review:"'valmis', 'muokkaa diaa/lukua X', 'poista X' tai 'lisää'...",interview:"Kerro projektistasi...",writing:"Kommentoi tai kirjoita 'valmis'...",default:"Kommentoi tai hyväksy..."},
-    greeting:"Hei! Olen Goforen projektisuunnitelma-agentti.\n\nKerro projektistasi — mitä tehdään, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet. Voit liittää dokumentteja 📎-napista.\n\n5 vaihetta:\n1️⃣ Projektitiedot  2️⃣ Fokus  3️⃣ Havainnot  4️⃣ Rakenne  5️⃣ Sisältö",
+    greeting:"Hei! Olen projektisuunnitelma-agentti.\n\nKerro projektistasi — mitä tehdään, milloin, kenen kanssa ja mitkä ovat tärkeimmät haasteet. Voit liittää dokumentteja 📎-napista.\n\n5 vaihetta:\n1️⃣ Projektitiedot  2️⃣ Fokus  3️⃣ Havainnot  4️⃣ Rakenne  5️⃣ Sisältö",
     materialThanks:"Kiitos materiaalista! Siirrytään valitsemaan esityksen tarkoitus.",
     structureConfirmed:"Rakenne vahvistettu! Aloitetaan sisällöntuotanto.",
     saving:"💾 Tallennetaan...",saved:"tallennettu.",updated:"päivitetty!",noChanges:"— ei muutoksia.",
@@ -92,11 +92,11 @@ const T = {
     enterPresentationName:"Name your presentation",noPresentations:"No presentations yet.",openProject:"Open",
     sharedContext:"Shared context",interviewDone:"Interview completed",interviewNotDone:"Start from interview",
     continuePresentation:"Continue",deletePresentation:"Delete",
-    steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Content","I propose, you confirm"],["📊","Ready","Gofore-themed document"]],
+    steps:[["💬","Interview","Tell about your project"],["🔍","Insights","I identify risks and alternatives"],["🤝","Content","I propose, you confirm"],["📊","Ready","document"]],
     phases:{interview:"💬 Phase 1 — Interview",focus:"🎯 Phase 2 — Focus",insights:"🔍 Phase 3 — Insights",structure:"📐 Phase 4 — Structure",planning:"📄 Phase 5 — Content",deepdive:"🔍 Phase 5 — Deep dive",writing:"✍️ Phase 6 — Document writing",review:"👀 Final review",ready:"✅ Done"},
     slides:"Parts",chapters:"Chapters",redownload:"🚀 Download again",
     placeholder:{review:"'done', 'edit slide/chapter X', 'remove X' or 'add'...",interview:"Tell about your project...",writing:"Comment or type 'done'...",default:"Comment or approve..."},
-    greeting:"Hi! I'm Gofore's project plan agent.\n\nTell me about your project — what, when, with whom, and key challenges. Attach documents with 📎.\n\n5 phases:\n1️⃣ Project info  2️⃣ Focus  3️⃣ Insights  4️⃣ Structure  5️⃣ Content",
+    greeting:"Hi! I'm project plan agent.\n\nTell me about your project — what, when, with whom, and key challenges. Attach documents with 📎.\n\n5 phases:\n1️⃣ Project info  2️⃣ Focus  3️⃣ Insights  4️⃣ Structure  5️⃣ Content",
     materialThanks:"Thanks for the material! Let's choose the presentation focus.",
     structureConfirmed:"Structure confirmed! Starting content creation.",
     saving:"💾 Saving...",saved:"saved.",updated:"updated!",noChanges:"— no changes.",
@@ -108,7 +108,7 @@ const T = {
 
 function getSystem(lang) {
   const today = new Date().toLocaleDateString(lang==="fi"?"fi-FI":"en-US",{year:"numeric",month:"long",day:"numeric"});
-  if (lang==="fi") return `Olet kokenut projektikonsultti Goforella. Kommunikoi AINA suomeksi.
+  if (lang==="fi") return `Olet kokenut projektikonsultti. Kommunikoi AINA suomeksi.
 TÄNÄÄN ON: ${today}.
 ROOLISI: Olet osa sovellusta joka generoi PowerPoint- tai Word-tiedoston. Roolisi on kerätä sisältö keskustelemalla JA ANALYSOIDA materiaalia.
 
@@ -140,7 +140,7 @@ SÄÄNNÖT:
    Vaihtele layouteja luontevasti sisällön mukaan.
 9. Tarjoa 2 vaihtoehtoa — mutta kerro kumpi on suosituksesi ja miksi.
 ÄLÄ KOSKAAN tuota [SLIDE_DATA] tai [STRUCTURE_DATA] tageja.`;
-  return `You are an experienced project consultant at Gofore. ALWAYS communicate in English.
+  return `You are an experienced project consultant. ALWAYS communicate in English.
 TODAY IS: ${today}.
 ROLE: You collect content through conversation for an automatic PowerPoint or Word document generator AND ANALYZE the material.
 
@@ -192,7 +192,7 @@ function shouldSearch(text) {
   // Organisaatioiden tunnistus: "Oy", "Ab", "Oyj", "Ltd", "Inc", "GmbH", "Corp"
   if (/\b\w+\s+(?:oy[j]?|ab|ltd|inc|gmbh|corp|plc|as|ag|ry|sr)\b/i.test(text)) return true;
   // Tunnetut yritysnimet / merkit (yleisimmät suomalaiset + kansainväliset)
-  if (/(?:gofore|accenture|tieto|eviden|cgi|solita|vincit|reaktor|futurice|siili|microsoft|google|amazon|aws|salesforce|sap|oracle)\b/i.test(text)) return true;
+  if (/(?:accenture|tieto|eviden|cgi|solita|vincit|reaktor|futurice|siili|microsoft|google|amazon|aws|salesforce|sap|oracle)\b/i.test(text)) return true;
   return false;
 }
 const LAYOUT_DESC = {title:"otsikkodia",bullets:"bullet-lista",table:"taulukko",gantt:"Gantt-kaavio",cards:"korttiruudukko","two-col":"kaksipalstainen",bar_chart:"pylväskaavio",pie_chart:"piirakkakaavio",line_chart:"viivakaavio",kpi:"avainluvut"};
@@ -446,7 +446,7 @@ function App() {
   const lastProposalRef=useRef({});const summaryRef=useRef("");
   const decisionsRef=useRef([]);  // Isot päätökset: toimittajavalinnat, budjetti, aikataulu jne.
 
-  useEffect(()=>{document.title="PM-Agent | Gofore";},[]);
+  useEffect(()=>{document.title="PM-Agent";},[]);
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:"smooth"});},[msgs,busy]);
 
   // ═══ KEEPALIVE: Pidä backend hereillä + tarkista session ═══
