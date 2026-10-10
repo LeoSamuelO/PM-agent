@@ -9,7 +9,9 @@ Built as a personal project alongside my master's thesis on applying AI to IT pr
 - **Structured interview.** Instead of a blank chat box, the agent asks about the project step by step and keeps track of what it still needs.
 - **Document generation.** Produces `.pptx` and `.docx` files from the collected material, generated server-side with python-pptx and python-docx.
 - **File input.** Reads existing project material from PDF and Excel files and uses it as context.
-- **Number checking.** A verification endpoint checks figures in generated content against the source material, to catch numbers the model invented.
+- **Number checking.** A verification endpoint recomputes the arithmetic in
+  generated content and corrects results that do not add up. It does not
+  compare figures against the source material.
 - **Projects and profiles.** Users can save projects, generated presentations, and reusable agent profiles that adjust how the assistant behaves.
 - **Accounts.** Registration and login with JWT sessions, password hashing, rate limiting on auth and chat endpoints, and a small admin view for user management.
 
